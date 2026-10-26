@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 같은 와이파이 안의 PC(192.168.x.x 등)와 http로 주고받기 위해 평문 통신 허용.
+     PC 연결은 매번 바뀌는 비밀 코드로 보호된다. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

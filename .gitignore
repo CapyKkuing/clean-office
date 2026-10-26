@@ -1,0 +1,17 @@
+node_modules/
+dist/
+dev-dist/
+*.log
+.env*
+android/local.properties
+android/.gradle/
+android/build/
+android/app/build/
+android/capacitor-cordova-android-plugins/
+android/app/src/main/assets/public/
+*.keystore
+*.jks
+
+# 로컬 도구 설정
+.claude/
+release/

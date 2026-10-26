@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#1f6f5c" />
+  <title>클린오피스</title>
+  <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <button class="icon-btn" id="btnBack" title="홈으로" hidden>←</button>
+    <div class="brand" id="brand"><img src="/icon.svg" alt="" /><span>클린오피스</span></div>
+    <div class="doc-title" id="docTitle" hidden></div>
+    <div class="top-actions" id="topActions"></div>
+  </header>
+
+  <main id="home" class="home">
+    <section class="hero">
+      <h1>광고 없는 문서 작업</h1>
+      <p>PDF · 워드 · 엑셀 · 파워포인트 · 한글 파일을 열고, 간단히 고쳐서 저장하세요. 같은 와이파이에서 PC와 휴대폰이 파일을 주고받을 수 있습니다.</p>
+    </section>
+
+    <section class="cards">
+      <button class="card card-open" id="openFile">
+        <span class="card-ico">📂</span>
+        <strong>파일 열기</strong>
+        <small>기기·드라이브·원드라이브 등에서 선택</small>
+      </button>
+      <button class="card" id="newDoc">
+        <span class="card-ico doc">W</span>
+        <strong>새 문서</strong>
+        <small>워드(.docx)로 저장</small>
+      </button>
+      <button class="card" id="newSheet">
+        <span class="card-ico sheet">X</span>
+        <strong>새 시트</strong>
+        <small>엑셀(.xlsx)로 저장</small>
+      </button>
+      <button class="card card-drive" id="openPc">
+        <span class="card-ico drive">⇄</span>
+        <strong>폰 연결</strong>
+        <small>QR로 휴대폰과 파일 주고받기</small>
+      </button>
+    </section>
+
+    <section class="recent">
+      <div class="recent-head">
+        <h2>최근 문서</h2>
+        <button class="link-btn" id="clearRecent">목록 비우기</button>
+      </div>
+      <ul id="recentList" class="recent-list"></ul>
+      <p class="empty" id="recentEmpty">아직 연 문서가 없습니다.</p>
+    </section>
+  </main>
+
+  <main id="workspace" class="workspace" hidden>
+    <div id="toolbar" class="toolbar" hidden></div>
+    <div id="stage" class="stage"></div>
+  </main>
+
+  <input type="file" id="fileInput" hidden accept=".pdf,.docx,.xlsx,.xlsm,.xls,.csv,.pptx,.hwp,.hwpx,.txt,.md,.png,.jpg,.jpeg,.gif,.webp" />
+  <div id="dropHint" class="drop-hint" hidden>여기에 놓으면 열립니다</div>
+  <div id="toast" class="toast" hidden></div>
+  <div id="busy" class="busy" hidden><div class="spinner"></div><span id="busyText">여는 중…</span></div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

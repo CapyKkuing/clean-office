@@ -1,0 +1,6 @@
+{
+  "appId": "io.github.capykkuing.cleanoffice",
+  "appName": "클린오피스",
+  "webDir": "dist",
+  "android": { "allowMixedContent": true }
+}

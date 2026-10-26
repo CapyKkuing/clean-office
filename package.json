@@ -1,0 +1,37 @@
+{
+  "name": "clean-office",
+  "version": "0.1.0",
+  "description": "광고 없는 문서 뷰어·편집기 (PDF·워드·엑셀·파워포인트·한글)",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "start": "node server/server.mjs",
+    "android": "vite build && npx cap sync android"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@capacitor-mlkit/barcode-scanning": "^8.2.1",
+    "@capacitor/app": "^8.1.2",
+    "@capacitor/core": "^8.5.3",
+    "@capacitor/filesystem": "^8.1.5",
+    "@capacitor/share": "^8.0.3",
+    "@rhwp/core": "^0.8.7",
+    "docx": "^9.14.0",
+    "docx-preview": "^0.4.1",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^4.2.1",
+    "mammoth": "^1.13.0",
+    "pdfjs-dist": "^6.4.299",
+    "pptx-preview": "^1.0.7",
+    "qrcode": "^1.5.4",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^8.5.3",
+    "@capacitor/cli": "^8.5.3",
+    "vite": "^8.3.5",
+    "vite-plugin-pwa": "^2.0.0"
+  },
+  "type": "module",
+  "private": true
+}
