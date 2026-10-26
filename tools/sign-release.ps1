@@ -20,7 +20,7 @@ if (-not (Test-Path $unsigned)) { throw "먼저 배포용 빌드를 하세요: c
 if (-not (Test-Path $Keystore)) {
   Write-Host ""
   Write-Host "서명 키가 없어 새로 만듭니다: $Keystore" -ForegroundColor Cyan
-  Write-Host "비밀번호를 정해 두 번 입력하세요 (6자 이상). 화면에 글자가 안 보이는 게 정상입니다." -ForegroundColor Cyan
+  Write-Host "비밀번호를 정해 두 번 입력하세요. 영문 대소문자·숫자만, 8자 이상 (한글 불가). 화면에 글자가 안 보이는 게 정상입니다." -ForegroundColor Cyan
   Write-Host "※ 이 키와 비밀번호를 잃어버리면 앱 업데이트를 더 이상 낼 수 없습니다. 꼭 따로 보관하세요." -ForegroundColor Yellow
   & "$Jdk\bin\keytool.exe" -genkeypair -keystore $Keystore -alias $Alias -keyalg RSA -keysize 4096 -validity 10000 -storetype PKCS12 -dname "CN=CapyKkuing, O=Clean Office"
   if ($LASTEXITCODE -ne 0) { throw "키 만들기 실패" }

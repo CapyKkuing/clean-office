@@ -212,3 +212,4 @@ table.grid td.bold { font-weight: 700; }
 .pc-card code { background: var(--surface-2); padding: 2px 8px; border-radius: 6px; word-break: break-all; font-size: 13px; }
 .pc-card .hint { font-size: 13px; text-align: left; }
 .pc-card .warn { color: var(--pdf); }
+.warn-line { color: var(--slide); font-size: 13px; }

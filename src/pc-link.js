@@ -159,6 +159,7 @@ export function renderPcBrowser(stage, onOpen) {
       h('p', {}, '1) PC에서 "클린오피스 실행"을 켜고 "폰 연결"을 누르면 QR 코드가 나옵니다.'),
       h('p', {}, '2) 폰과 PC가 같은 와이파이에 있어야 합니다.'),
       h('p', {}, '3) 아래 버튼으로 QR을 찍으면, PC의 "클린오피스" 폴더 파일을 열고 저장할 수 있습니다.'),
+      h('p', { class: 'warn-line' }, '⚠ 집·사무실처럼 믿을 수 있는 와이파이에서만 쓰세요. 카페 등 공용 와이파이에서는 다른 사람이 오가는 파일을 엿볼 수 있습니다.'),
       isNative ? h('button', { class: 'btn primary', onclick: scan }, 'QR 코드 찍기') : null,
       h('button', { class: 'btn', onclick: manual }, '주소·코드 직접 입력')));
   }
@@ -265,6 +266,7 @@ export async function renderPcPanel(stage) {
         h('div', {}, h('span', {}, '주소'), h('code', {}, addrs.join('  /  ') || '없음')),
         h('div', {}, h('span', {}, '연결 코드'), h('code', {}, info.key))),
       h('p', { class: 'hint' }, '이 폴더 안의 파일만 폰에서 보입니다. 처음 켤 때 윈도우 방화벽 창이 뜨면 "개인 네트워크"에 허용해 주세요.'),
+      h('p', { class: 'hint warn-line' }, '⚠ 집·사무실처럼 믿을 수 있는 와이파이에서만 켜세요. 공용 와이파이에서는 쓰지 마세요.'),
       h('p', { class: 'hint' }, '연결 코드는 비밀번호와 같습니다. 다른 사람에게 보여주지 마세요. 새 코드를 만들면 기존에 연결한 폰은 다시 QR을 찍어야 합니다.'),
       h('button', { class: 'btn', onclick: async () => {
         if (!confirm('연결 코드를 새로 만들까요? 기존에 연결된 폰은 끊깁니다.')) return;

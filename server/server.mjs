@@ -51,6 +51,30 @@ function lanAddresses() {
 
 const isLoopback = (req) => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress);
 
+// 접속 주소(Host) 검사: 이 PC의 주소로 들어온 요청만 받음.
+// 가짜 도메인을 이 PC로 돌리는 수법(DNS 리바인딩)으로 브라우저가 서버를 '같은 사이트'로 착각하는 것을 막는다.
+function hostAllowed(req) {
+  const host = String(req.headers.host || '').toLowerCase();
+  const m = host.match(/^(\[[^\]]+\]|[^:]+)(?::(\d+))?$/);
+  if (!m) return false;
+  const name = m[1];
+  const port = m[2] ? Number(m[2]) : 80;
+  if (port !== PORT) return false;
+  if (['localhost', '127.0.0.1', '[::1]'].includes(name)) return true;
+  return lanAddresses().some((a) => a.url === `http://${name}:${PORT}`);
+}
+
+// PC 화면 전용 API: 브라우저에서 왔다면 출처(Origin)가 이 서버 자신이어야 함.
+// 다른 웹사이트가 몰래 localhost로 요청해 연결 코드를 빼가는 것을 막는다.
+function sameSiteOnly(req) {
+  const origin = req.headers.origin;
+  const fetchSite = req.headers['sec-fetch-site'];
+  if (origin === undefined && !fetchSite) return true; // 브라우저가 아닌 요청(직접 호출)
+  if (fetchSite && fetchSite !== 'same-origin') return false;
+  if (origin === undefined) return true;
+  return [`http://localhost:${PORT}`, `http://127.0.0.1:${PORT}`].includes(origin);
+}
+
 function safePath(rel = '') {
   if (typeof rel !== 'string' || rel.includes('\0')) return null;
   const parts = rel.split(/[\\/]+/).filter(Boolean);
@@ -115,9 +139,9 @@ function readBody(req) {
 async function api(req, res, url) {
   const p = url.pathname;
 
-  // PC 화면 전용 (이 PC에서만): QR에 넣을 정보
+  // PC 화면 전용 (이 PC, 이 화면에서만): QR에 넣을 정보
   if (p === '/api/local/pair' || p === '/api/local/rotate') {
-    if (!isLoopback(req)) return send(res, 403, { error: '이 PC에서만 볼 수 있습니다' });
+    if (!isLoopback(req) || !sameSiteOnly(req)) return send(res, 403, { error: '이 PC의 클린오피스 화면에서만 볼 수 있습니다' }, { 'Access-Control-Allow-Origin': 'null' });
     if (p === '/api/local/rotate') {
       if (req.method !== 'PUT') return send(res, 405, { error: 'PUT만 됩니다' });
       config.key = crypto.randomBytes(18).toString('base64url');
@@ -210,6 +234,7 @@ async function staticFile(req, res, url) {
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
   try {
+    if (!hostAllowed(req)) { res.writeHead(421, { 'Content-Type': 'application/json; charset=utf-8' }); return res.end(JSON.stringify({ error: '잘못된 접속 주소' })); }
     if (req.method === 'OPTIONS') { res.writeHead(204, cors()); return res.end(); }
     if (url.pathname.startsWith('/api/')) return await api(req, res, url);
     if (req.method !== 'GET') return send(res, 405, { error: '지원하지 않는 요청' });
