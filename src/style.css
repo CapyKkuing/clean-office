@@ -400,3 +400,9 @@ body { letter-spacing: -0.01em; }
 }
 .sl-text.empty p[data-bu]::before { content: none; }
 @media (max-width: 699px) { .pst-thumb-img { zoom: .72; } }
+/* 슬라이드 보기: 부품 기본값(고정 높이 + 안쪽 스크롤) 대신 모든 슬라이드를 아래로 이어 보이기 */
+.pptx-host .pptx-preview-wrapper { height: auto !important; overflow: visible !important; background: transparent !important; }
+.pptx-host .pptx-preview-slide-wrapper { margin: 0 auto 14px !important; box-shadow: 0 4px 14px rgba(16, 24, 20, .12); }
+.pv-host { display: flex; flex-direction: column; align-items: safe center; gap: 14px; padding: 16px 12px 48px; }
+.pv-slide { position: relative; flex: none; overflow: hidden; box-shadow: 0 4px 14px rgba(16, 24, 20, .14); border-radius: 4px; }
+.pv-slide .sl-slide { pointer-events: auto; user-select: text; -webkit-user-select: text; }

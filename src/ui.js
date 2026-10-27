@@ -110,7 +110,9 @@ export function menu(anchor, items) {
   document.body.append(m);
   const r = anchor.getBoundingClientRect();
   m.style.top = `${r.bottom + 6 + window.scrollY}px`;
-  m.style.right = `${Math.max(8, window.innerWidth - r.right)}px`;
+  // 버튼 오른쪽 끝에 맞추되, 화면 왼쪽 밖으로 나가면 버튼 왼쪽에 맞춤
+  if (r.right - m.offsetWidth < 8) { m.style.left = `${Math.max(8, r.left)}px`; m.style.right = 'auto'; }
+  else m.style.right = `${Math.max(8, window.innerWidth - r.right)}px`;
   setTimeout(() => document.addEventListener('click', closeMenus, { once: true }), 0);
 }
 

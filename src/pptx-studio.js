@@ -27,7 +27,8 @@ function relTarget(from, to) {
   return [...Array(a.length - i).fill('..'), ...b.slice(i)].join('/');
 }
 
-export async function createPptxStudio(stage, toolbar, data) {
+// 파일 읽기: 슬라이드·레이아웃·마스터·테마·그림을 모두 불러 둠 (보기 화면과 편집기가 함께 씀)
+export async function openDeck(data) {
   const JSZip = (await import('jszip')).default;
   const zip = await JSZip.loadAsync(data);
   const read = async (path) => { const f = zip.file(path); if (!f) throw new Error(`파일 구성요소가 없습니다: ${path}`); return f.async('string'); };
@@ -117,6 +118,12 @@ export async function createPptxStudio(stage, toolbar, data) {
     slides.push({ ...part, sldId, rid, ctx: await contextFor(part), deleted: false });
   }
   if (!slides.length) throw new Error('슬라이드가 없는 파일입니다');
+
+  return { zip, read, parts, loadPart, relMap, relOfType, presPath, pres, presRels, presRelById, size, sldIdLst, urls, contextFor, slides };
+}
+
+export async function createPptxStudio(stage, toolbar, data) {
+  const { zip, read, parts, loadPart, relMap, relOfType, presPath, pres, presRels, presRelById, size, sldIdLst, urls, contextFor, slides } = await openDeck(data);
 
   // ---------- 화면 뼈대 ----------
   const root = h('div', { class: 'pst' });

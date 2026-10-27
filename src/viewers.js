@@ -188,6 +188,13 @@ export async function viewDocx(stage, data, toolbar) {
 
 // ---------- PPTX ----------
 export async function viewPptx(stage, data, toolbar) {
+  // 편집기와 같은 렌더러로 그림 (상속된 글자 크기·글머리 기호·테마 색까지). 못 그리면 예전 부품으로
+  try {
+    return await viewPptxOwn(stage, data, toolbar);
+  } catch (e) {
+    console.warn('자체 슬라이드 그리기 실패, 예비 방식 사용', e);
+    stage.replaceChildren();
+  }
   const { init } = await import('pptx-preview');
   const host = h('div', { class: 'pptx-host' });
   stage.append(host);
@@ -202,6 +209,36 @@ export async function viewPptx(stage, data, toolbar) {
   }
   const stopZoom = addZoom(stage, toolbar, (z) => { host.style.zoom = String(z); });
   return () => { stopZoom(); previewer.destroy?.(); };
+}
+
+async function viewPptxOwn(stage, data, toolbar) {
+  const [{ openDeck }, { renderSlide, px }] = await Promise.all([import('./pptx-studio.js'), import('./pptx-render.js')]);
+  const deck = await openDeck(data.slice(0));
+  const sw = px(deck.size.cx);
+  const sh = px(deck.size.cy);
+  const host = h('div', { class: 'pv-host' });
+  const items = deck.slides.map((s) => {
+    const { el } = renderSlide(s, s.ctx, deck.size);
+    const holder = h('div', { class: 'pv-slide' }, el);
+    host.append(holder);
+    return { holder, el };
+  });
+  stage.append(host);
+  neutralizeLinks(host);
+  let zoom = 1;
+  const layout = () => {
+    const k = (Math.min(stage.clientWidth - 24, 1100) / sw) * zoom;
+    for (const { holder, el } of items) {
+      holder.style.width = `${sw * k}px`;
+      holder.style.height = `${sh * k}px`;
+      el.style.transform = `scale(${k})`;
+    }
+  };
+  layout();
+  const ro = new ResizeObserver(layout);
+  ro.observe(stage);
+  const stopZoom = addZoom(stage, toolbar, (z) => { zoom = z; layout(); });
+  return () => { stopZoom(); ro.disconnect(); for (const u of deck.urls.values()) URL.revokeObjectURL(u); };
 }
 
 // 자동 생성 도구(pptxgenjs 등)는 목록([Content_Types].xml)에 없는 부품을 적어 두기도 함.
