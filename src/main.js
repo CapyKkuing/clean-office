@@ -1,5 +1,5 @@
 import { App } from '@capacitor/app';
-import { h, btn, menu, toast, busy, baseName, extOf, esc } from './ui.js';
+import { h, btn, menu, toast, busy, baseName, extOf, esc, ask, isModalOpen, closeModal } from './ui.js';
 import { listRecent, getRecent, saveRecent, removeRecent, clearRecent } from './store.js';
 import { shareBlob } from './save.js';
 import { viewPdf, viewDocx, viewPptx, viewHwp, viewText, viewImage, viewNotice, sanitizeHtml, neutralizeLinks } from './viewers.js';
@@ -54,8 +54,10 @@ function showWorkspace(name) {
   if (history.state?.doc !== true) history.pushState({ doc: true }, '');
 }
 
+const isDirty = () => !!(current?.editor?.dirty || current?.carryDirty);
+
 function leave() {
-  if (current?.editor?.dirty && !confirm('저장하지 않은 변경 내용이 있습니다. 나갈까요?')) return false;
+  if (isDirty() && !confirm('저장하지 않은 변경 내용이 있습니다. 나갈까요?')) return false;
   showHome();
   return true;
 }
@@ -67,9 +69,11 @@ window.addEventListener('popstate', () => {
 });
 
 if (isNative) {
-  App.addListener('backButton', () => {
-    if (current) leave();
-    else App.exitApp();
+  // 뒤로가기: 확인창이 떠 있으면 닫기 → 문서 화면이면 홈으로 → 홈이면 '종료할까요?' 물어보고 종료
+  App.addListener('backButton', async () => {
+    if (isModalOpen()) return closeModal();
+    if (current) return leave();
+    if (await ask('클린오피스를 종료할까요?', null, { ok: '종료', cancel: '계속 쓰기' })) App.exitApp();
   });
 }
 
@@ -162,15 +166,15 @@ async function openFile(name, data, { remember = true, src = {} } = {}) {
     // 보기 부품이 원본 버퍼를 넘겨받아 비울 수 있어 복사본을 저장
     if (remember) saveRecent(name, data.slice(0), rememberable(src)).catch(() => {});
     if (ext === 'pdf') {
-      await viewPdf(stage, data, toolbar);
+      current.cleanup = await viewPdf(stage, data, toolbar);
       viewerActions(name, data, { src });
     } else if (ext === 'docx') {
-      current.cleanup = await viewDocx(stage, data).then((fit) => { window.addEventListener('resize', fit); return () => window.removeEventListener('resize', fit); });
+      current.cleanup = await viewDocx(stage, data, toolbar);
       viewerActions(name, data, { src, edit: () => editDocx(name, data, src) });
     } else if (['xlsx', 'xlsm', 'xls', 'csv', 'ods'].includes(ext)) {
       openSheet(name, data, src);
     } else if (ext === 'pptx') {
-      current.cleanup = await viewPptx(stage, data);
+      current.cleanup = await viewPptx(stage, data, toolbar);
       viewerActions(name, data, { src, edit: () => editWith('pptx', name, data, src) });
     } else if (ext === 'hwp' || ext === 'hwpx') {
       current.cleanup = await viewHwp(stage, data, toolbar);
@@ -221,30 +225,90 @@ function editText(name, data, src) {
 }
 
 function openDocEditor(name, html, src = {}) {
+  return openEditor('doc', name, { html }, src);
+}
+
+// ---------- 편집 화면 (워드·파워포인트·한글 공통) ----------
+// 같은 상단 바(간단↔상세 · 더보기 · 저장)와 같은 서식 도구모음. 새로 만들기·불러오기 모두 이 화면으로 들어옴.
+// 휴대폰은 '간단 편집'이 기본, 넓은 화면의 워드·파워포인트는 '상세 편집'이 기본. 고른 것은 기억함.
+const DETAIL_KEY = 'co-detail-';
+function detailPref(kind) {
+  try { const v = localStorage.getItem(DETAIL_KEY + kind); if (v !== null) return v === '1'; } catch { /* 저장 불가 */ }
+  return kind !== 'hwp' && window.innerWidth >= 900;
+}
+function setDetailPref(kind, on) {
+  try { localStorage.setItem(DETAIL_KEY + kind, on ? '1' : '0'); } catch { /* 저장 불가 */ }
+}
+
+async function openEditor(kind, name, payload, src = {}, opts = {}) {
+  const detail = opts.detail ?? detailPref(kind);
+  const label = { doc: '워드', pptx: '파워포인트', hwp: '한글' }[kind];
   current?.cleanup?.();
   showWorkspace(name);
-  const editor = createDocEditor(stage, toolbar, html);
-  neutralizeLinks(editor.page);
-  current = { name, editor, src };
+  busy(true, `${label} 편집 준비 중…`);
+  let editor;
+  try {
+    if (kind === 'doc') {
+      editor = createDocEditor(stage, toolbar, payload.html, { detail });
+      neutralizeLinks(editor.page);
+    } else if (kind === 'pptx') {
+      editor = await (await import('./pptx-editor.js')).createPptxEditor(stage, toolbar, payload.data.slice(0), { detail });
+    } else {
+      editor = detail
+        ? await (await import('./hwp-editor.js')).createHwpEditor(stage, payload.data.slice(0), name)
+        : await (await import('./hwp-simple.js')).createHwpSimpleEditor(stage, toolbar, payload.data.slice(0), name);
+    }
+  } catch (e) {
+    busy(false);
+    stage.replaceChildren();
+    viewNotice(stage, `<b>${label} 편집 화면을 열지 못했습니다.</b><br><small style="color:var(--ink-2)">${esc(String(e.message || e).slice(0, 200))}</small>`);
+    return;
+  }
+  busy(false);
+  current = { name, editor, src, kind, carryDirty: !!opts.dirty, cleanup: () => editor.destroy?.() };
   const base = baseName(name);
-  const docx = () => htmlToDocx(editor.page);
+  const ext = kind === 'doc' ? 'docx' : extOf(name);
+  const saveName = `${base}.${ext}`;
+  const make = (fmt = ext) => (kind === 'doc' ? htmlToDocx(editor.page) : editor.toBlob(fmt));
 
-  const saveDocx = async () => {
+  const save = async () => {
     busy(true, '저장 준비 중…');
     let blob;
-    try { blob = await docx(); } finally { busy(false); }
-    if (await persist(`${base}.docx`, blob, src)) editor.markSaved();
+    try { blob = await make(); } catch (e) { busy(false); return toast(`저장하지 못했습니다: ${e.message}`, 5000); }
+    busy(false);
+    if (await persist(saveName, blob, src)) { editor.markSaved(); current.carryDirty = false; }
   };
-  const more = btn('더보기', (e) => menu(e.currentTarget, [
-    ...commonItems(`${base}.docx`, docx, src),
-    ['PDF로 내보내기', () => exportCopy(`${base}.pdf`, async () => { busy(true, 'PDF 만드는 중…'); try { return await elementToPdf(editor.page); } finally { busy(false); } })],
-    ['텍스트(.txt)로 내보내기', () => exportCopy(`${base}.txt`, async () => htmlToText(editor.page))],
-  ]), { icon: '⋯', title: '다른 형식·공유' });
-  actions.append(more, btn(src.pc ? 'PC에 저장' : '저장', saveDocx, { primary: true, icon: '⤓' }));
-  editor.page.addEventListener('keydown', (e) => {
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); saveDocx(); }
-  });
-  editor.page.focus();
+
+  // 간단 ↔ 상세 전환: 지금까지 고친 내용을 그대로 들고 넘어감
+  const toggle = btn(detail ? '간단 편집' : '상세 편집', async () => {
+    busy(true, '편집 화면 바꾸는 중…');
+    let next;
+    try {
+      next = kind === 'doc' ? { html: editor.page.innerHTML } : { data: await (await make()).arrayBuffer() };
+    } catch (e) { busy(false); return toast(`바꾸지 못했습니다: ${e.message}`, 5000); }
+    busy(false);
+    const wasDirty = editor.dirty || current.carryDirty;
+    setDetailPref(kind, !detail);
+    openEditor(kind, name, next, src, { detail: !detail, dirty: wasDirty });
+  }, { title: detail ? '자주 쓰는 도구만 보기' : '모든 편집 도구 보기' });
+  toggle.classList.add('mode-toggle');
+
+  const items = [...commonItems(saveName, () => make(), src)];
+  if (kind === 'doc') {
+    items.push(['PDF로 내보내기', () => exportCopy(`${base}.pdf`, async () => { busy(true, 'PDF 만드는 중…'); try { return await elementToPdf(editor.page); } finally { busy(false); } })],
+      ['텍스트(.txt)로 내보내기', () => exportCopy(`${base}.txt`, async () => htmlToText(editor.page))]);
+  }
+  if (kind === 'hwp') {
+    const other = ext === 'hwp' ? 'hwpx' : 'hwp';
+    items.push([`${other.toUpperCase()}로 내보내기`, () => exportCopy(`${base}.${other}`, () => make(other))]);
+  }
+  actions.append(toggle, btn('더보기', (e) => menu(e.currentTarget, items), { icon: '⋯', title: '다른 형식·공유' }),
+    btn(src.pc ? 'PC에 저장' : '저장', save, { primary: true, icon: '⤓' }));
+  const onKey = (e) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); save(); } };
+  document.addEventListener('keydown', onKey);
+  const prevCleanup = current.cleanup;
+  current.cleanup = () => { document.removeEventListener('keydown', onKey); prevCleanup(); };
+  editor.page?.focus?.();
 }
 
 // ---------- 옛 DOC·PPT: 글자 보기 + 새 형식으로 바꾸기 ----------
@@ -252,9 +316,15 @@ async function viewLegacy(name, data, ext) {
   const legacy = await import('./legacy.js');
   const res = ext === 'doc' ? await legacy.extractDoc(data) : await legacy.extractPpt(data);
   const base = baseName(name);
+  if (res.isDocx) { // 이름만 .doc 이고 속은 DOCX
+    stage.replaceChildren();
+    current.cleanup = await viewDocx(stage, data, toolbar);
+    viewerActions(name, data, { src: current.src, edit: () => editDocx(`${base}.docx`, data, {}) });
+    return;
+  }
   const empty = ext === 'doc' ? !res.paragraphs.some((p) => p.trim()) : !res.slides.length;
   stage.append(h('div', { class: 'legacy-banner' },
-    h('b', {}, `예전 형식(.${ext}) 문서라 글자만 보여 드립니다`),
+    h('b', {}, res.note ? `${res.note} — 글자만 보여 드립니다` : `예전 형식(.${ext}) 문서라 글자만 보여 드립니다`),
     h('span', {}, ext === 'doc'
       ? '서식·그림은 빠집니다. "워드로 바꾸기"를 누르면 DOCX로 편집·저장할 수 있어요.'
       : '디자인·그림은 빠집니다. "PPTX로 바꾸기"를 누르면 새 파워포인트로 만들어 줍니다.')));
@@ -282,42 +352,9 @@ async function viewLegacy(name, data, ext) {
   }
 }
 
-// ---------- 파워포인트·한글 편집 (공통 화면) ----------
-async function editWith(kind, name, data, src) {
-  const label = kind === 'pptx' ? '파워포인트' : '한글';
-  if (kind === 'pptx' && !confirm('슬라이드의 글자를 고치는 화면으로 바꿉니다.\n디자인·그림·도형 위치는 그대로 두고 글자만 바뀝니다.\n저장 전까지 원본 파일은 바뀌지 않습니다.')) return;
-  current?.cleanup?.();
-  showWorkspace(name);
-  busy(true, `${label} 편집 준비 중…`);
-  let editor;
-  try {
-    editor = kind === 'pptx'
-      ? await (await import('./pptx-editor.js')).createPptxEditor(stage, toolbar, data.slice(0))
-      : await (await import('./hwp-editor.js')).createHwpEditor(stage, data.slice(0), name);
-  } catch (e) {
-    busy(false);
-    stage.replaceChildren();
-    viewNotice(stage, `<b>${label} 편집 화면을 열지 못했습니다.</b><br><small style="color:var(--ink-2)">${esc(String(e.message || e).slice(0, 200))}</small>`);
-    return;
-  }
-  busy(false);
-  current = { name, editor, src, cleanup: () => editor.destroy() };
-  const ext = extOf(name);
-  const make = (fmt = ext) => editor.toBlob(fmt);
-  const save = async () => {
-    busy(true, '저장 준비 중…');
-    let blob;
-    try { blob = await make(); } catch (e) { busy(false); return toast(`저장하지 못했습니다: ${e.message}`, 5000); }
-    busy(false);
-    if (await persist(name, blob, src)) editor.markSaved();
-  };
-  const items = [...commonItems(name, () => make(), src)];
-  if (kind !== 'pptx') {
-    const other = ext === 'hwp' ? 'hwpx' : 'hwp';
-    items.push([`${other.toUpperCase()}로 내보내기`, () => exportCopy(`${baseName(name)}.${other}`, () => make(other))]);
-  }
-  actions.append(btn('더보기', (e) => menu(e.currentTarget, items), { icon: '⋯', title: '다른 형식·공유' }),
-    btn(src.pc ? 'PC에 저장' : '저장', save, { primary: true, icon: '⤓' }));
+// 보기 화면의 '편집' 버튼 → 공통 편집 화면
+function editWith(kind, name, data, src) {
+  return openEditor(kind === 'pptx' ? 'pptx' : 'hwp', name, { data }, src);
 }
 
 // ---------- 시트 편집 ----------
@@ -419,6 +456,50 @@ $('openPc').addEventListener('click', openPcScreen);
 $('fileInput').addEventListener('change', (e) => { openPicked(e.target.files[0]); e.target.value = ''; });
 $('newDoc').addEventListener('click', () => openDocEditor('새 문서.docx', '<h1>제목</h1><p>여기에 내용을 입력하세요.</p>'));
 $('newSheet').addEventListener('click', () => { showWorkspace('새 시트.xlsx'); openSheet('새 시트.xlsx', null); });
+
+// 새 슬라이드: 앱에 들어 있는 빈 서식(16:9, 제목 + 내용)을 열어 바로 글자 편집
+$('newSlides').addEventListener('click', async () => {
+  busy(true, '새 슬라이드 준비 중…');
+  try {
+    const data = await (await fetch(new URL('templates/blank.pptx', location.href))).arrayBuffer();
+    busy(false);
+    editWith('pptx', '새 프레젠테이션.pptx', data, {});
+  } catch (e) {
+    busy(false);
+    toast(`만들지 못했습니다: ${e.message}`, 5000);
+  }
+});
+
+// 새 한글 문서: 한글 엔진으로 빈 문서를 만들어 편집기로 바로 엶
+$('newHwp').addEventListener('click', async () => {
+  busy(true, '새 한글 문서 준비 중…');
+  try {
+    const data = await createBlankHwp();
+    busy(false);
+    editWith('hwp', '새 한글 문서.hwp', data, {});
+  } catch (e) {
+    busy(false);
+    toast(`만들지 못했습니다: ${e.message}`, 5000);
+  }
+});
+
+async function createBlankHwp() {
+  const lib = await import('@rhwp/core');
+  const wasm = await import('@rhwp/core/rhwp_bg.wasm?url');
+  globalThis.measureTextWidth ??= (font, text) => {
+    const c = (createBlankHwp.ctx ??= document.createElement('canvas').getContext('2d'));
+    c.font = font;
+    return c.measureText(text).width;
+  };
+  await lib.default({ module_or_path: wasm.default });
+  const doc = lib.HwpDocument.createEmpty();
+  doc.createBlankDocument();
+  const bytes = doc.exportHwp();
+  doc.free?.();
+  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+}
+
+$('appVersion').textContent = `클린오피스 v${__APP_VERSION__}`;
 $('clearRecent').addEventListener('click', async () => { if (confirm('최근 문서 목록을 비울까요? (원본 파일은 지워지지 않습니다)')) { await clearRecent(); renderRecent(); } });
 
 // 카드 문구를 기기에 맞게
@@ -438,7 +519,7 @@ window.addEventListener('drop', async (e) => {
   $('dropHint').hidden = true;
   const item = e.dataTransfer?.items?.[0];
   const file = e.dataTransfer?.files?.[0];
-  if (!file || (current?.editor?.dirty && !confirm('저장하지 않은 변경 내용이 있습니다. 새 파일을 열까요?'))) return;
+  if (!file || (isDirty() && !confirm('저장하지 않은 변경 내용이 있습니다. 새 파일을 열까요?'))) return;
   // 크롬·엣지는 끌어다 놓은 파일도 같은 파일에 다시 저장 가능
   let src = {};
   try {
@@ -456,7 +537,7 @@ function openFromIntent(r) {
   if (!r?.data) return;
   if (r.uri === lastIntent.uri && Date.now() - lastIntent.at < 5000) return;
   lastIntent = { uri: r.uri, at: Date.now() };
-  if (current?.editor?.dirty && !confirm('저장하지 않은 변경 내용이 있습니다. 새 파일을 열까요?')) return;
+  if (isDirty() && !confirm('저장하지 않은 변경 내용이 있습니다. 새 파일을 열까요?')) return;
   openFile(r.name, b64ToBuffer(r.data), { src: { name: r.name, saf: { uri: r.uri, writable: r.writable } } });
 }
 if (isNative) {

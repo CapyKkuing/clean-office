@@ -1,6 +1,7 @@
 // 파워포인트(PPTX) 간단 편집: 슬라이드 글자 고치기, 순서 바꾸기, 지우기
 // 디자인(배경·도형 위치·글꼴)은 원본 파일 그대로 두고, 글자 부분만 바꿔 저장한다.
-import { h, toast } from './ui.js';
+import { h, toast, icon } from './ui.js';
+import { buildRichToolbar, paragraphRuns, blockAlign, runsToHtml } from './rich-toolbar.js';
 
 const NS = {
   a: 'http://schemas.openxmlformats.org/drawingml/2006/main',
@@ -38,27 +39,72 @@ function paragraphText(p) {
   return s;
 }
 
-// 문단 하나의 글자를 바꿈: 첫 글자 덩어리의 서식은 유지하고 나머지는 지움
-function setParagraphText(p, text) {
-  const runs = [...p.childNodes].filter((n) => n.nodeType === 1 && n.namespaceURI === NS.a && ['r', 'br', 'fld'].includes(n.localName));
-  const keep = runs.find((n) => n.localName === 'r');
-  runs.forEach((n) => { if (n !== keep) n.remove(); });
-  if (!text) { keep?.remove(); return; }
-  let run = keep;
-  if (!run) {
-    const doc = p.ownerDocument;
-    run = doc.createElementNS(NS.a, 'a:r');
-    const end = kids(p, NS.a, 'endParaRPr')[0];
-    if (end) {
-      const rPr = doc.createElementNS(NS.a, 'a:rPr');
-      for (const at of end.attributes) rPr.setAttribute(at.name, at.value);
-      for (const c of end.childNodes) rPr.appendChild(c.cloneNode(true));
-      run.appendChild(rPr);
+const ALGN_CSS = { l: 'left', ctr: 'center', r: 'right', just: 'justify', dist: 'justify' };
+const CSS_ALGN = { left: 'l', center: 'ctr', right: 'r', justify: 'just' };
+
+// 슬라이드 문단(a:p) → 편집 화면 HTML <p>
+function paraToHtml(p) {
+  const runs = [];
+  for (const n of p.childNodes) {
+    if (n.nodeType !== 1 || n.namespaceURI !== NS.a) continue;
+    if (n.localName === 'br') { runs.push({ text: ' ' }); continue; }
+    if (n.localName !== 'r' && n.localName !== 'fld') continue;
+    const rPr = kids(n, NS.a, 'rPr')[0];
+    const clr = rPr && first(rPr, NS.a, 'srgbClr');
+    runs.push({
+      text: first(n, NS.a, 't')?.textContent ?? '',
+      bold: rPr?.getAttribute('b') === '1',
+      italic: rPr?.getAttribute('i') === '1',
+      underline: !!rPr?.getAttribute('u') && rPr.getAttribute('u') !== 'none',
+      color: clr ? `#${clr.getAttribute('val').toLowerCase()}` : null,
+    });
+  }
+  const algn = kids(p, NS.a, 'pPr')[0]?.getAttribute('algn');
+  const style = algn && ALGN_CSS[algn] ? ` style="text-align:${ALGN_CSS[algn]}"` : '';
+  return `<p${style}>${runsToHtml(runs.filter((r) => r.text))}</p>`;
+}
+
+// 편집한 <p> → 슬라이드 문단(a:p). 첫 글자 덩어리의 서식(글꼴·크기 등)을 바탕으로 굵게·기울임·밑줄·색만 바꿈
+function writeParagraph(p, block) {
+  const doc = p.ownerDocument;
+  const old = [...p.childNodes].filter((n) => n.nodeType === 1 && n.namespaceURI === NS.a && ['r', 'br', 'fld'].includes(n.localName));
+  const end = kids(p, NS.a, 'endParaRPr')[0];
+  const firstRun = old.find((n) => n.localName === 'r');
+  const baseRPr = firstRun ? kids(firstRun, NS.a, 'rPr')[0] : null;
+  old.forEach((n) => n.remove());
+  for (const r of paragraphRuns(block)) {
+    const run = doc.createElementNS(NS.a, 'a:r');
+    let rPr;
+    if (baseRPr) rPr = baseRPr.cloneNode(true);
+    else {
+      rPr = doc.createElementNS(NS.a, 'a:rPr');
+      if (end) { for (const at of end.attributes) rPr.setAttribute(at.name, at.value); for (const c of end.childNodes) rPr.appendChild(c.cloneNode(true)); }
     }
-    run.appendChild(doc.createElementNS(NS.a, 'a:t'));
+    r.bold ? rPr.setAttribute('b', '1') : rPr.removeAttribute('b');
+    r.italic ? rPr.setAttribute('i', '1') : rPr.removeAttribute('i');
+    r.underline ? rPr.setAttribute('u', 'sng') : rPr.removeAttribute('u');
+    if (r.color) {
+      for (const f of [...rPr.childNodes]) if (f.nodeType === 1 && ['solidFill', 'gradFill', 'noFill'].includes(f.localName)) f.remove();
+      const fill = doc.createElementNS(NS.a, 'a:solidFill');
+      const clr = doc.createElementNS(NS.a, 'a:srgbClr');
+      clr.setAttribute('val', r.color.slice(1).toUpperCase());
+      fill.appendChild(clr);
+      // a:solidFill 은 a:ln 다음, 글꼴(latin/ea/cs) 앞에 와야 함
+      const before = [...rPr.childNodes].find((c) => c.nodeType === 1 && !['ln'].includes(c.localName));
+      rPr.insertBefore(fill, before || null);
+    }
+    run.appendChild(rPr);
+    const t = doc.createElementNS(NS.a, 'a:t');
+    t.textContent = r.text;
+    run.appendChild(t);
     p.insertBefore(run, end || null);
   }
-  first(run, NS.a, 't').textContent = text;
+  const align = blockAlign(block);
+  if (align) {
+    let pPr = kids(p, NS.a, 'pPr')[0];
+    if (!pPr) { pPr = doc.createElementNS(NS.a, 'a:pPr'); p.insertBefore(pPr, p.firstChild); }
+    pPr.setAttribute('algn', CSS_ALGN[align] || 'l');
+  }
 }
 
 // 보기용: 슬라이드 순서대로 글자 상자 내용만 꺼냄
@@ -82,7 +128,7 @@ export async function readPptxText(data) {
   return out;
 }
 
-export async function createPptxEditor(stage, toolbar, data) {
+export async function createPptxEditor(stage, toolbar, data, { detail = false } = {}) {
   const JSZip = (await import('jszip')).default;
   const zip = await JSZip.loadAsync(data);
   const read = async (path) => { const f = zip.file(path); if (!f) throw new Error(`파일 구성요소가 없습니다: ${path}`); return f.async('string'); };
@@ -110,33 +156,100 @@ export async function createPptxEditor(stage, toolbar, data) {
       if (['dt', 'ftr', 'sldNum'].includes(phType)) continue;
       const paras = kids(body, NS.a, 'p');
       n += 1;
-      boxes.push({ body, paras, label: PH_LABEL[phType] || `글자 상자 ${n}`, original: paras.map(paragraphText).join('\n') });
+      const html = paras.map(paraToHtml).join('');
+      boxes.push({ body, label: PH_LABEL[phType] || `글자 상자 ${n}`, html, current: html });
     }
     slides.push({ sldId, rid, path, doc, boxes, deleted: false });
   }
 
   // ---------- 화면 ----------
   let dirty = false;
+  let lastBox = null;
   const list = h('div', { class: 'pptx-edit' });
   stage.append(list);
-  toolbar.append(h('span', { class: 'tb-note' }, '글자만 고칩니다 · 디자인은 원본 그대로'));
-  toolbar.hidden = false;
+  const stopBar = buildRichToolbar(toolbar, { focusTarget: () => lastBox || list.querySelector('.box-edit'), features: {}, detail: false, onChange: () => (dirty = true) });
+  if (detail) {
+    toolbar.append(h('span', { class: 'sep' }),
+      h('button', { title: '마지막 슬라이드를 복제해 뒤에 추가', onclick: () => addSlide() }, icon('plus'), h('span', {}, '슬라이드 추가')));
+  }
 
-  const autoGrow = (ta) => { ta.style.height = 'auto'; ta.style.height = `${ta.scrollHeight + 2}px`; };
+  // 새 슬라이드: 마지막(지워지지 않은) 슬라이드를 복제. 디자인·배치가 같은 새 장을 만들고 글자만 바꿔 쓰게 함
+  let newIndex = 0;
+  async function addSlide() {
+    const live = slides.filter((s) => !s.deleted);
+    const base = live.at(-1);
+    newIndex += 1;
+    let n = 1;
+    while (zip.file(`ppt/slides/slide${n}.xml`) || slides.some((s) => s.path === `ppt/slides/slide${n}.xml`)) n++;
+    const path = `ppt/slides/slide${n}.xml`;
+    const doc = parse(new XMLSerializer().serializeToString(base.doc));
+    // 원본 슬라이드의 연결(레이아웃·그림)은 그대로, 발표자 노트 연결만 뺌
+    const baseRels = zip.file(relsPathOf(base.path));
+    if (baseRels) {
+      const r = parse(await baseRels.async('string'));
+      for (const rel of [...r.getElementsByTagNameNS(NS.rel, 'Relationship')]) if (/notesSlide$/.test(rel.getAttribute('Type'))) rel.remove();
+      zip.file(relsPathOf(path), serialize(r));
+    }
+    const ct = parse(await read('[Content_Types].xml'));
+    const ov = ct.createElementNS(NS.ct, 'Override');
+    ov.setAttribute('PartName', `/${path}`);
+    ov.setAttribute('ContentType', 'application/vnd.openxmlformats-officedocument.presentationml.slide+xml');
+    ct.documentElement.appendChild(ov);
+    zip.file('[Content_Types].xml', serialize(ct));
+    let rn = 1;
+    while (relById.has(`rId${rn}`)) rn++;
+    const rid = `rId${rn}`;
+    const rel = presRels.createElementNS(NS.rel, 'Relationship');
+    rel.setAttribute('Id', rid);
+    rel.setAttribute('Type', 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide');
+    rel.setAttribute('Target', `slides/slide${n}.xml`);
+    presRels.documentElement.appendChild(rel);
+    relById.set(rid, rel);
+    const ids = kids(sldIdLst, NS.p, 'sldId').map((e) => Number(e.getAttribute('id'))).concat(slides.map((s) => Number(s.sldId.getAttribute('id'))));
+    const sldId = pres.createElementNS(NS.p, 'p:sldId');
+    sldId.setAttribute('id', String(Math.max(255, ...ids) + 1));
+    sldId.setAttributeNS(NS.r, 'r:id', rid);
+    const boxes = [];
+    let k = 0;
+    for (const sp of doc.getElementsByTagNameNS(NS.p, 'sp')) {
+      const body = kids(sp, NS.p, 'txBody')[0];
+      if (!body) continue;
+      const ph = first(sp, NS.p, 'ph');
+      const phType = ph ? (ph.getAttribute('type') || 'body') : null;
+      if (['dt', 'ftr', 'sldNum'].includes(phType)) continue;
+      k += 1;
+      const paras = kids(body, NS.a, 'p');
+      // 복제한 장은 글자를 비워 둠 (원본 글자는 회색 안내로)
+      boxes.push({ body, label: PH_LABEL[phType] || `글자 상자 ${k}`, html: '\u0000', current: '<p><br></p>', hint: paras.map(paragraphText).join(' / ') });
+    }
+    zip.file(path, serialize(doc));
+    capture();
+    slides.push({ sldId, rid, path, doc, boxes, deleted: false, added: true });
+    dirty = true;
+    render();
+    list.lastElementChild?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    toast('슬라이드를 추가했습니다. 글자를 입력하세요');
+  }
+
+  // 화면을 다시 그리기 전, 편집 중인 내용을 상자 정보에 옮겨 둠
+  function capture() {
+    for (const s of slides) for (const b of s.boxes) if (b.el) b.current = b.el.innerHTML;
+  }
   function render() {
+    capture();
     const live = slides.filter((s) => !s.deleted);
     list.replaceChildren(...live.map((s, i) => h('section', { class: 'slide-card' },
       h('div', { class: 'slide-head' },
         h('b', {}, `슬라이드 ${i + 1}`),
-        h('div', { class: 'slide-tools' },
+        detail ? h('div', { class: 'slide-tools' },
           h('button', { title: '위로', disabled: i === 0, onclick: () => move(s, -1) }, '↑'),
           h('button', { title: '아래로', disabled: i === live.length - 1, onclick: () => move(s, 1) }, '↓'),
-          h('button', { title: '슬라이드 삭제', class: 'danger', onclick: () => remove(s) }, '삭제'))),
+          h('button', { title: '슬라이드 삭제', class: 'danger', onclick: () => remove(s) }, '삭제')) : null),
       s.boxes.length ? s.boxes.map((b) => {
-        const ta = h('textarea', { rows: 1, oninput: (e) => { b.value = e.target.value; dirty = true; autoGrow(e.target); } });
-        ta.value = b.value ?? b.original;
-        requestAnimationFrame(() => autoGrow(ta));
-        return h('label', { class: 'box' }, h('span', {}, b.label), ta);
+        const el = h('div', { class: 'box-edit', contenteditable: 'true', spellcheck: 'false', 'data-hint': b.hint || '', onfocus: () => { lastBox = el; }, oninput: () => { dirty = true; } });
+        el.innerHTML = b.current;
+        b.el = el;
+        return h('div', { class: 'box' }, h('span', {}, b.label), el);
       }) : h('p', { class: 'empty' }, '고칠 수 있는 글자 상자가 없습니다 (그림·표만 있는 슬라이드)'))));
   }
   function move(s, d) {
@@ -161,21 +274,25 @@ export async function createPptxEditor(stage, toolbar, data) {
 
   // ---------- 저장 ----------
   async function toBlob() {
-    // 1) 글자 반영
+    capture();
+    // 1) 글자·서식 반영: 바뀐 상자만, 화면의 <p> 개수에 맞춰 문단을 늘리거나 줄임
     for (const s of slides) {
       if (s.deleted) continue;
       let changed = false;
       for (const b of s.boxes) {
-        if (b.value === undefined || b.value === b.original) continue;
+        if (b.current === b.html) continue;
         changed = true;
-        const lines = b.value.split('\n');
+        const tmp = document.createElement('div');
+        tmp.innerHTML = b.current;
+        let blocks = [...tmp.children].filter((el) => /^(P|DIV|H\d|LI)$/.test(el.tagName));
+        if (!blocks.length) { const p = document.createElement('p'); p.innerHTML = b.current; blocks = [p]; }
         const paras = kids(b.body, NS.a, 'p');
-        for (let i = 0; i < lines.length; i++) {
+        for (let i = 0; i < blocks.length; i++) {
           let p = paras[i];
           if (!p) { p = paras.at(-1).cloneNode(true); b.body.appendChild(p); paras.push(p); }
-          setParagraphText(p, lines[i]);
+          writeParagraph(p, blocks[i]);
         }
-        for (let i = lines.length; i < paras.length; i++) paras[i].remove();
+        for (let i = blocks.length; i < paras.length; i++) paras[i].remove();
       }
       if (changed) zip.file(s.path, serialize(s.doc));
     }
@@ -208,8 +325,8 @@ export async function createPptxEditor(stage, toolbar, data) {
   return {
     page: list,
     get dirty() { return dirty; },
-    markSaved() { dirty = false; for (const s of slides) for (const b of s.boxes) if (b.value !== undefined) b.original = b.value; },
+    markSaved() { dirty = false; capture(); for (const s of slides) for (const b of s.boxes) b.html = b.current; },
     toBlob,
-    destroy() {},
+    destroy() { stopBar(); },
   };
 }

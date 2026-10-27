@@ -1,5 +1,80 @@
 import { h } from './ui.js';
 
+// ---------- 확대·축소 (버튼 · 두 손가락 벌리기 · Ctrl+휠) ----------
+// apply(z): 실제로 그 배율로 다시 그리는 함수. 손가락으로 벌리는 동안은 화면만 늘였다가 손을 떼면 apply.
+const ZMIN = 0.5;
+const ZMAX = 4;
+export function addZoom(stage, toolbar, apply, extra = []) {
+  let zoom = 1;
+  const label = h('span', { class: 'zoom-label' }, '100%');
+  const set = (z) => {
+    zoom = Math.min(ZMAX, Math.max(ZMIN, Math.round(z * 100) / 100));
+    label.textContent = `${Math.round(zoom * 100)}%`;
+    apply(zoom);
+  };
+  toolbar.append(
+    h('button', { title: '축소', onclick: () => set(zoom / 1.25) }, '－'),
+    label,
+    h('button', { title: '확대', onclick: () => set(zoom * 1.25) }, '＋'),
+    h('button', { title: '화면 맞춤', onclick: () => set(1) }, '맞춤'),
+    ...extra,
+  );
+  toolbar.hidden = false;
+
+  // 두 손가락 확대
+  const content = () => stage.firstElementChild;
+  let pinch = null;
+  const dist = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+  const onStart = (e) => {
+    if (e.touches.length !== 2) return;
+    const r = stage.getBoundingClientRect();
+    const cx = (e.touches[0].clientX + e.touches[1].clientX) / 2 - r.left + stage.scrollLeft;
+    const cy = (e.touches[0].clientY + e.touches[1].clientY) / 2 - r.top + stage.scrollTop;
+    pinch = { d0: dist(e.touches), ratio: 1, cx, cy, sx: stage.scrollLeft, sy: stage.scrollTop };
+    const el = content();
+    if (el) el.style.transformOrigin = `${cx}px ${cy}px`;
+  };
+  const onMove = (e) => {
+    if (!pinch || e.touches.length !== 2) return;
+    e.preventDefault();
+    const ratio = Math.min(ZMAX / zoom, Math.max(ZMIN / zoom, dist(e.touches) / pinch.d0));
+    pinch.ratio = ratio;
+    const el = content();
+    if (el) el.style.transform = `scale(${ratio})`;
+  };
+  const onEnd = () => {
+    if (!pinch) return;
+    const { ratio, cx, cy, sx, sy } = pinch;
+    pinch = null;
+    const el = content();
+    if (el) { el.style.transform = ''; el.style.transformOrigin = ''; }
+    if (Math.abs(ratio - 1) < 0.03) return;
+    set(zoom * ratio);
+    // 손가락 사이 지점이 화면에서 제자리에 있도록 스크롤 보정
+    requestAnimationFrame(() => {
+      stage.scrollLeft = cx * ratio - (cx - sx);
+      stage.scrollTop = cy * ratio - (cy - sy);
+    });
+  };
+  const onWheel = (e) => {
+    if (!e.ctrlKey) return;
+    e.preventDefault();
+    set(zoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1));
+  };
+  stage.addEventListener('touchstart', onStart, { passive: true });
+  stage.addEventListener('touchmove', onMove, { passive: false });
+  stage.addEventListener('touchend', onEnd);
+  stage.addEventListener('touchcancel', onEnd);
+  stage.addEventListener('wheel', onWheel, { passive: false });
+  return () => {
+    stage.removeEventListener('touchstart', onStart);
+    stage.removeEventListener('touchmove', onMove);
+    stage.removeEventListener('touchend', onEnd);
+    stage.removeEventListener('touchcancel', onEnd);
+    stage.removeEventListener('wheel', onWheel);
+  };
+}
+
 // 문서에서 나온 링크 무력화: javascript: 같은 위험한 주소는 지우고, 나머지는 새 창으로만 열리게
 const SAFE_HREF = /^(https?:|mailto:|tel:|#)/i;
 export function neutralizeLinks(root) {
@@ -80,18 +155,12 @@ export async function viewPdf(stage, data, toolbar) {
   }, { root: stage, rootMargin: '600px 0px' });
   sizeAll();
 
-  toolbar.append(
-    h('button', { title: '축소', onclick: () => { zoom = Math.max(0.4, zoom - 0.2); sizeAll(); } }, '－'),
-    h('button', { title: '확대', onclick: () => { zoom = Math.min(3, zoom + 0.2); sizeAll(); } }, '＋'),
-    h('button', { title: '화면 맞춤', onclick: () => { zoom = 1; sizeAll(); } }, '맞춤'),
-    h('span', { class: 'sep' }),
-    h('span', { style: 'color:var(--ink-2);padding:0 6px' }, `${doc.numPages}쪽`),
-  );
-  toolbar.hidden = false;
+  return addZoom(stage, toolbar, (z) => { zoom = z; sizeAll(); },
+    [h('span', { class: 'sep' }), h('span', { style: 'color:var(--ink-2);padding:0 6px' }, `${doc.numPages}쪽`)]);
 }
 
 // ---------- DOCX (원본 서식 보기) ----------
-export async function viewDocx(stage, data) {
+export async function viewDocx(stage, data, toolbar) {
   const { renderAsync } = await import('docx-preview');
   const host = h('div', { class: 'docx-host' });
   stage.append(host);
@@ -100,27 +169,25 @@ export async function viewDocx(stage, data) {
     experimental: true, renderHeaders: true, renderFooters: true, useBase64URL: true,
   });
   neutralizeLinks(host);
-  // 좁은 화면이면 페이지를 화면 폭에 맞게 축소
+  // 기본은 화면 폭에 맞춤(넓은 화면에선 원래 크기), 그 위에 사용자가 고른 배율을 곱함
+  let zoom = 1;
   const fit = () => {
     host.querySelectorAll('section.docx').forEach((sec) => {
-      sec.style.transform = '';
+      sec.style.zoom = '';
       const w = sec.offsetWidth;
       const avail = stage.clientWidth - 16;
-      if (w > avail) {
-        const s = avail / w;
-        sec.style.transformOrigin = 'top left';
-        sec.style.transform = `scale(${s})`;
-        sec.style.marginBottom = `${-(1 - s) * sec.offsetHeight + 14}px`;
-        sec.style.marginLeft = '8px';
-      }
+      const base = w > avail ? avail / w : 1;
+      sec.style.zoom = String(base * zoom);
     });
   };
   fit();
-  return fit;
+  const stopZoom = addZoom(stage, toolbar, (z) => { zoom = z; fit(); });
+  window.addEventListener('resize', fit);
+  return () => { stopZoom(); window.removeEventListener('resize', fit); };
 }
 
 // ---------- PPTX ----------
-export async function viewPptx(stage, data) {
+export async function viewPptx(stage, data, toolbar) {
   const { init } = await import('pptx-preview');
   const host = h('div', { class: 'pptx-host' });
   stage.append(host);
@@ -133,7 +200,8 @@ export async function viewPptx(stage, data) {
     previewer.destroy?.();
     host.replaceChildren(await pptxTextFallback(data));
   }
-  return () => previewer.destroy?.();
+  const stopZoom = addZoom(stage, toolbar, (z) => { host.style.zoom = String(z); });
+  return () => { stopZoom(); previewer.destroy?.(); };
 }
 
 async function pptxTextFallback(data) {
@@ -148,7 +216,7 @@ async function pptxTextFallback(data) {
 
 // ---------- HWP / HWPX (rhwp: Rust+WASM, 캔버스로만 그려서 문서 속 코드가 실행되지 않음) ----------
 let rhwpPromise;
-function loadRhwp() {
+export function loadRhwp() {
   rhwpPromise ??= Promise.all([import('@rhwp/core'), import('@rhwp/core/rhwp_bg.wasm?url')]).then(async ([lib, wasm]) => {
     let ctx;
     let lastFont = '';
@@ -218,15 +286,9 @@ export async function viewHwp(stage, data, toolbar) {
   };
   sizeAll();
 
-  toolbar.append(
-    h('button', { title: '축소', onclick: () => { zoom = Math.max(0.4, zoom - 0.2); sizeAll(); } }, '－'),
-    h('button', { title: '확대', onclick: () => { zoom = Math.min(3, zoom + 0.2); sizeAll(); } }, '＋'),
-    h('button', { title: '화면 맞춤', onclick: () => { zoom = 1; sizeAll(); } }, '맞춤'),
-    h('span', { class: 'sep' }),
-    h('span', { style: 'color:var(--ink-2);padding:0 6px' }, `${total}쪽`),
-  );
-  toolbar.hidden = false;
-  return () => { io.disconnect(); doc.free?.(); };
+  const stopZoom = addZoom(stage, toolbar, (z) => { zoom = z; sizeAll(); },
+    [h('span', { class: 'sep' }), h('span', { style: 'color:var(--ink-2);padding:0 6px' }, `${total}쪽`)]);
+  return () => { stopZoom(); io.disconnect(); doc.free?.(); };
 }
 
 // ---------- 텍스트 / 이미지 ----------

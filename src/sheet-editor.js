@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import { h, toast } from './ui.js';
+import { h, toast, icon } from './ui.js';
 import { evaluate } from './formula.js';
 
 const PAGE_ROWS = 500;
@@ -30,7 +30,7 @@ export function createSheetEditor(stage, toolbar, data) {
   stage.append(wrap);
 
   toolbar.append(
-    h('button', { title: '실행 취소 (Ctrl+Z)', onclick: doUndo }, '↶'),
+    h('button', { title: '실행 취소 (Ctrl+Z)', onclick: doUndo }, icon('undo')),
     h('span', { class: 'sep' }),
     h('button', { title: '아래에 행 더 보기', onclick: () => { addRows(50); } }, '+ 행'),
     h('button', { title: '오른쪽에 열 추가', onclick: () => { addCol(); render(); } }, '+ 열'),

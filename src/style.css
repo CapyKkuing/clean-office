@@ -77,7 +77,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .card-ico { font-size: 22px; width: 38px; height: 38px; display: grid; place-items: center; border-radius: 10px; margin-bottom: 6px; font-weight: 800; }
 .card-ico.doc { background: var(--doc); color: #fff; font-size: 17px; }
 .card-ico.sheet { background: var(--sheet); color: #fff; font-size: 17px; }
-.card-ico.drive { background: #3b7be0; color: #fff; font-size: 20px; }
+
 
 /* drive */
 .drive { width: 100%; max-width: 960px; margin: 0 auto; padding: 12px 12px 40px; }
@@ -196,9 +196,10 @@ table.grid td.bold { font-weight: 700; }
 
 @media (max-width: 640px) {
   .cards { grid-template-columns: 1fr 1fr; }
-  .card-open, .card-drive { grid-column: 1 / -1; }
+  .card-open, .card-link { grid-column: 1 / -1; }
   .brand span { display: none; }
-  .top-actions .btn .lbl { display: none; }
+  .top-actions .btn:not(.mode-toggle) .lbl { display: none; }
+  .top-actions .mode-toggle { padding: 0 12px; font-size: 13px; }
   .hero h1 { font-size: 22px; }
 }
 @media print {
@@ -237,7 +238,7 @@ body { letter-spacing: -0.01em; }
 .card-open { background: linear-gradient(135deg, var(--brand), var(--brand-hi)); }
 .card-ico { width: 44px; height: 44px; border-radius: 14px; margin-bottom: 10px; }
 .card-open .card-ico { background: rgba(255,255,255,.18); }
-.card-ico.drive { background: color-mix(in srgb, var(--doc) 12%, var(--surface)); color: var(--doc); }
+
 .recent h2 { font-size: 18px; letter-spacing: -0.02em; }
 .recent-list { border: 0; box-shadow: var(--shadow); border-radius: var(--radius); }
 .recent-list li { border-top-color: var(--surface-2); padding: 14px 16px; }
@@ -276,8 +277,10 @@ body { letter-spacing: -0.01em; }
 .slide-tools button.danger { color: var(--pdf); }
 .slide-card .box { display: flex; flex-direction: column; gap: 6px; }
 .slide-card .box span { font-size: 12px; color: var(--ink-2); font-weight: 600; letter-spacing: .02em; }
-.slide-card textarea { width: 100%; resize: none; border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; font: inherit; font-size: 15px; line-height: 1.5; background: var(--surface-2); color: var(--ink); overflow: hidden; }
-.slide-card textarea:focus { outline: 2px solid color-mix(in srgb, var(--brand) 45%, transparent); background: var(--surface); }
+.slide-card .box-edit { min-height: 44px; border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; font-size: 15px; line-height: 1.5; background: var(--surface-2); color: var(--ink); overflow-wrap: anywhere; }
+.slide-card .box-edit:focus { outline: 2px solid color-mix(in srgb, var(--brand) 45%, transparent); background: var(--surface); }
+.slide-card .box-edit p { margin: 0; }
+.slide-card .box-edit:empty::before, .slide-card .box-edit:has(> p:only-child > br:only-child)::before { content: attr(data-hint); color: var(--ink-2); pointer-events: none; float: left; }
 .legacy-banner { width: min(900px, calc(100% - 16px)); margin: 16px auto 0; padding: 14px 18px; border-radius: 16px; background: color-mix(in srgb, var(--slide) 10%, var(--surface)); display: flex; flex-direction: column; gap: 4px; }
 .legacy-banner span { color: var(--ink-2); font-size: 14px; }
 .legacy-text { font-family: inherit; border-radius: 16px; }
@@ -286,3 +289,55 @@ body { letter-spacing: -0.01em; }
 .pptx-fallback { width: min(860px, calc(100% - 24px)); margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
 .pptx-fallback .legacy-banner { width: 100%; margin: 0; }
 .fallback-text { margin: 0; line-height: 1.55; }
+
+/* ===== 0.2.1 ===== */
+.toolbar svg { display: block; }
+.color-tool { position: relative; flex-direction: column; gap: 1px; min-width: 36px; }
+.color-tool span { font-weight: 700; line-height: 1; }
+.color-tool .color-bar { display: block; width: 18px; height: 4px; border-radius: 2px; }
+.color-tool.hl span { background: #fff176; color: #111; padding: 0 2px; border-radius: 3px; }
+.color-tool input[type=color] { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; border: 0; padding: 0; }
+.btn { display: inline-flex; align-items: center; gap: 6px; }
+.btn svg { flex: none; }
+/* 홈: 새로 만들기 4종 + 형식 표시 + 버전 */
+.cards { grid-template-columns: repeat(4, 1fr); }
+.card-open, .card-link, .cards-label { grid-column: 1 / -1; }
+.cards-label { font-size: 15px; font-weight: 700; color: var(--ink-2); margin: 10px 2px -4px; letter-spacing: -0.01em; }
+.card-new { padding: 16px; }
+.card-new .card-ico { width: 40px; height: 40px; font-size: 16px; }
+.card-ico.slide { background: var(--slide); color: #fff; font-size: 16px; }
+.card-ico.hwp { background: var(--hwp); color: #fff; font-size: 16px; }
+.card-ico.pc { background: color-mix(in srgb, var(--doc) 12%, var(--surface)); color: var(--doc); }
+.card-link { flex-direction: row; align-items: center; gap: 14px; }
+.card-link .card-ico { margin: 0; }
+.card-link strong { margin-right: 4px; }
+.formats { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.formats i { font-style: normal; font-size: 12px; font-weight: 700; padding: 4px 9px; border-radius: 999px; background: rgba(255,255,255,.18); color: #fff; }
+.app-foot { margin: 30px 0 calc(env(safe-area-inset-bottom) + 10px); text-align: center; font-size: 12.5px; color: var(--ink-2); }
+@media (max-width: 640px) {
+  .cards { grid-template-columns: 1fr 1fr; }
+  .card-link { flex-wrap: wrap; }
+}
+/* 확대한 문서가 왼쪽으로 잘리지 않게: 가운데 정렬은 남는 공간이 있을 때만 */
+.pages { align-items: safe center; }
+.pdf-page { flex: none; }
+.docx-host .docx-wrapper { align-items: safe center !important; }
+.pptx-host { align-items: safe center; }
+.zoom-label { min-width: 46px; text-align: center; font-size: 13px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.stage { touch-action: pan-x pan-y; }
+.pdf-page { max-width: none; }
+/* 확인창 */
+.modal-wrap { position: fixed; inset: 0; z-index: 70; background: rgba(10,14,12,.45); display: grid; place-items: center; padding: 20px; animation: fade .15s ease; }
+.modal { width: min(360px, 100%); background: var(--surface); color: var(--ink); border-radius: 24px; padding: 24px 22px 18px; box-shadow: 0 30px 60px rgba(0,0,0,.3); display: flex; flex-direction: column; gap: 10px; animation: pop .18s ease; }
+.modal-title { font-size: 18px; letter-spacing: -0.02em; }
+.modal-msg { margin: 0; color: var(--ink-2); line-height: 1.5; font-size: 14.5px; }
+.modal-btns { display: flex; gap: 8px; margin-top: 10px; }
+.modal-btns .btn { flex: 1; justify-content: center; height: 46px; font-weight: 700; }
+.btn.danger { background: var(--pdf); border-color: var(--pdf); }
+@keyframes fade { from { opacity: 0; } }
+@keyframes pop { from { transform: scale(.96); opacity: 0; } }
+
+/* 간단 편집 안내 · 한글 표/그림 자리 · 간단↔상세 버튼 */
+.simple-hint { width: min(860px, calc(100% - 24px)); margin: 12px auto 0; padding: 8px 12px; border-radius: 10px; background: color-mix(in srgb, var(--brand) 10%, var(--surface)); color: var(--ink-2); font-size: 13px; line-height: 1.45; }
+.hwp-obj { margin: 8px 0; padding: 12px; border: 1px dashed var(--line); border-radius: 10px; background: var(--surface-2); color: var(--ink-2); font-size: 13px; text-align: center; user-select: none; }
+.mode-toggle { border: 1px solid color-mix(in srgb, var(--brand) 40%, var(--line)); color: var(--brand); }

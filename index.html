@@ -26,20 +26,34 @@
       <button class="card card-open" id="openFile">
         <span class="card-ico">📂</span>
         <strong>파일 열기</strong>
-        <small>기기·드라이브·원드라이브 등에서 선택</small>
+        <small>기기·드라이브·원드라이브 등에서 선택 · 열어서 편집까지</small>
+        <span class="formats" aria-label="열 수 있는 형식">
+          <i class="f-pdf">PDF</i><i class="f-doc">워드</i><i class="f-xls">엑셀</i><i class="f-ppt">PPT</i><i class="f-hwp">한글</i>
+        </span>
       </button>
-      <button class="card" id="newDoc">
+      <h2 class="cards-label">새로 만들기</h2>
+      <button class="card card-new" id="newDoc">
         <span class="card-ico doc">W</span>
         <strong>새 문서</strong>
-        <small>워드(.docx)로 저장</small>
+        <small>워드(.docx)</small>
       </button>
-      <button class="card" id="newSheet">
+      <button class="card card-new" id="newSheet">
         <span class="card-ico sheet">X</span>
         <strong>새 시트</strong>
-        <small>엑셀(.xlsx)로 저장</small>
+        <small>엑셀(.xlsx)</small>
       </button>
-      <button class="card card-drive" id="openPc">
-        <span class="card-ico drive">⇄</span>
+      <button class="card card-new" id="newSlides">
+        <span class="card-ico slide">P</span>
+        <strong>새 슬라이드</strong>
+        <small>파워포인트(.pptx)</small>
+      </button>
+      <button class="card card-new" id="newHwp">
+        <span class="card-ico hwp">한</span>
+        <strong>새 한글 문서</strong>
+        <small>한글(.hwp)</small>
+      </button>
+      <button class="card card-link" id="openPc">
+        <span class="card-ico pc">⇄</span>
         <strong>폰 연결</strong>
         <small>QR로 휴대폰과 파일 주고받기</small>
       </button>
@@ -53,6 +67,10 @@
       <ul id="recentList" class="recent-list"></ul>
       <p class="empty" id="recentEmpty">아직 연 문서가 없습니다.</p>
     </section>
+
+    <footer class="app-foot">
+      <span id="appVersion">클린오피스</span> · 광고 없음 · 오픈소스(MIT)
+    </footer>
   </main>
 
   <main id="workspace" class="workspace" hidden>
