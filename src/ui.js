@@ -45,6 +45,13 @@ const ICONS = {
   save: 'M12 4v11m0 0-4-4m4 4 4-4M5 20h14',
   edit: 'M4 20h4L19 9l-4-4L4 16zM14 6l4 4',
   swap: 'M7 7h13l-3-3M17 17H4l3 3',
+  text: 'M5 6V4h14v2M12 4v16M9 20h6',
+  shape: 'M3 13h9v8H3zM16.5 3l4.5 8h-9z',
+  fill: 'M5 11.5 11 5.5l7 7-6 6zM5 11.5h13M20 16s1.5 2 1.5 3a1.5 1.5 0 0 1-3 0c0-1 1.5-3 1.5-3',
+  copy: 'M9 9h11v11H9zM5 15V4h11',
+  front: 'M8 8h12v12H8zM4 16V4h12',
+  back: 'M4 4h12v12H4zM8 20h12V8',
+  trash: 'M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3',
 };
 // 예전 글자 아이콘 → 선 그림 아이콘
 const GLYPH = { '⋯': 'more', '⤓': 'save', '✎': 'edit', '⇄': 'swap' };

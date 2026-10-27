@@ -252,7 +252,9 @@ async function openEditor(kind, name, payload, src = {}, opts = {}) {
       editor = createDocEditor(stage, toolbar, payload.html, { detail });
       neutralizeLinks(editor.page);
     } else if (kind === 'pptx') {
-      editor = await (await import('./pptx-editor.js')).createPptxEditor(stage, toolbar, payload.data.slice(0), { detail });
+      editor = detail
+        ? await (await import('./pptx-studio.js')).createPptxStudio(stage, toolbar, payload.data.slice(0))
+        : await (await import('./pptx-editor.js')).createPptxEditor(stage, toolbar, payload.data.slice(0));
     } else {
       editor = detail
         ? await (await import('./hwp-editor.js')).createHwpEditor(stage, payload.data.slice(0), name)

@@ -193,7 +193,7 @@ export async function viewPptx(stage, data, toolbar) {
   stage.append(host);
   const width = Math.min(stage.clientWidth - 16, 960);
   const previewer = init(host, { width, height: Math.round(width * 9 / 16), mode: 'list' });
-  await previewer.preview(data.slice(0));
+  await previewer.preview(await tidyPptx(data));
   neutralizeLinks(host);
   // 일부 프로그램(구글 슬라이드·자동 생성 도구 등)이 만든 파일은 미리보기 부품이 못 그림 → 글자만이라도 보여줌
   if (!previewer.slideCount) {
@@ -202,6 +202,24 @@ export async function viewPptx(stage, data, toolbar) {
   }
   const stopZoom = addZoom(stage, toolbar, (z) => { host.style.zoom = String(z); });
   return () => { stopZoom(); previewer.destroy?.(); };
+}
+
+// 자동 생성 도구(pptxgenjs 등)는 목록([Content_Types].xml)에 없는 부품을 적어 두기도 함.
+// 파워포인트는 무시하지만 미리보기 부품은 통째로 실패하므로, 보기용 사본에서만 그 줄을 지움.
+async function tidyPptx(data) {
+  try {
+    const JSZip = (await import('jszip')).default;
+    const zip = await JSZip.loadAsync(data.slice(0));
+    const ct = zip.file('[Content_Types].xml');
+    if (!ct) return data.slice(0);
+    const xml = await ct.async('text');
+    const fixed = xml.replace(/<Override\b[^>]*PartName="\/([^"]+)"[^>]*\/>/g, (m, part) => (zip.file(part) ? m : ''));
+    if (fixed === xml) return data.slice(0);
+    zip.file('[Content_Types].xml', fixed);
+    return await zip.generateAsync({ type: 'arraybuffer' });
+  } catch {
+    return data.slice(0);
+  }
 }
 
 async function pptxTextFallback(data) {

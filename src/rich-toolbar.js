@@ -8,7 +8,8 @@ const SIZES = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 36];
 
 // features: { lists, headings, size, strike, highlight, table, image, hr }
 // detail: 상세 도구를 보일지
-export function buildRichToolbar(toolbar, { focusTarget, features = {}, detail = false, onChange = () => {} }) {
+// history: { undo(), redo() } 를 주면 글자 편집 중이 아닐 때 되돌리기 버튼이 그것을 부름 (슬라이드 도형 이동 등)
+export function buildRichToolbar(toolbar, { focusTarget, features = {}, detail = false, onChange = () => {}, history = null }) {
   document.execCommand('styleWithCSS', false, true);
   document.execCommand('defaultParagraphSeparator', false, 'p');
 
@@ -33,8 +34,8 @@ export function buildRichToolbar(toolbar, { focusTarget, features = {}, detail =
   if (detail && features.strike) toggles.strikeThrough = h('button', { title: '취소선', onclick: cmd('strikeThrough') }, h('s', {}, '가'));
 
   const items = [
-    h('button', { title: '실행 취소', onclick: cmd('undo') }, icon('undo')),
-    h('button', { title: '다시 실행', onclick: cmd('redo') }, icon('redo')),
+    h('button', { title: '실행 취소', onclick: history ? () => (history.undo() === false && cmd('undo')()) : cmd('undo') }, icon('undo')),
+    h('button', { title: '다시 실행', onclick: history ? () => (history.redo() === false && cmd('redo')()) : cmd('redo') }, icon('redo')),
   ];
   if (detail && features.headings) {
     items.push(h('span', { class: 'sep' }), h('select', { title: '문단 스타일', onchange: (e) => { focus(); document.execCommand('formatBlock', false, e.target.value); onChange(); } },
@@ -112,7 +113,7 @@ function insertTable(focus, onChange) {
 }
 
 // 편집한 HTML 한 문단을 '글자 덩어리' 목록으로 풀기 (한글·파워포인트 저장용)
-// 결과: [{ text, bold, italic, underline, color }]
+// 결과: [{ text, bold, italic, underline, color, size(pt, 직접 지정된 것만) }]
 export function paragraphRuns(block) {
   const runs = [];
   const walk = (node, fmt) => {
@@ -121,7 +122,7 @@ export function paragraphRuns(block) {
         const text = n.textContent.replace(/ /g, ' ');
         if (!text) continue;
         const last = runs.at(-1);
-        if (last && last.bold === fmt.bold && last.italic === fmt.italic && last.underline === fmt.underline && last.color === fmt.color) last.text += text;
+        if (last && last.bold === fmt.bold && last.italic === fmt.italic && last.underline === fmt.underline && last.color === fmt.color && last.size === fmt.size) last.text += text;
         else runs.push({ text, ...fmt });
         continue;
       }
@@ -135,11 +136,18 @@ export function paragraphRuns(block) {
       if (st.fontStyle === 'normal') f.italic = false;
       if (n.tagName === 'U' || /underline/.test(st.textDecorationLine || st.textDecoration || '')) f.underline = true;
       if (st.color || n.getAttribute('color')) f.color = cssToHex(st.color || n.getAttribute('color')) || f.color;
+      if (st.fontSize) f.size = cssToPt(st.fontSize) ?? f.size;
       walk(n, f);
     }
   };
-  walk(block, { bold: false, italic: false, underline: false, color: null });
+  walk(block, { bold: false, italic: false, underline: false, color: null, size: null });
   return runs;
+}
+
+function cssToPt(v) {
+  const m = /^([\d.]+)(pt|px)$/.exec(v);
+  if (!m) return null;
+  return m[2] === 'pt' ? Number(m[1]) : Math.round(Number(m[1]) * 0.75 * 2) / 2;
 }
 
 export function blockAlign(block) {

@@ -65,7 +65,7 @@ function paraToHtml(p) {
 }
 
 // 편집한 <p> → 슬라이드 문단(a:p). 첫 글자 덩어리의 서식(글꼴·크기 등)을 바탕으로 굵게·기울임·밑줄·색만 바꿈
-function writeParagraph(p, block) {
+export function writeParagraph(p, block) {
   const doc = p.ownerDocument;
   const old = [...p.childNodes].filter((n) => n.nodeType === 1 && n.namespaceURI === NS.a && ['r', 'br', 'fld'].includes(n.localName));
   const end = kids(p, NS.a, 'endParaRPr')[0];
@@ -83,6 +83,7 @@ function writeParagraph(p, block) {
     r.bold ? rPr.setAttribute('b', '1') : rPr.removeAttribute('b');
     r.italic ? rPr.setAttribute('i', '1') : rPr.removeAttribute('i');
     r.underline ? rPr.setAttribute('u', 'sng') : rPr.removeAttribute('u');
+    if (r.size) rPr.setAttribute('sz', String(Math.round(r.size * 100)));
     if (r.color) {
       for (const f of [...rPr.childNodes]) if (f.nodeType === 1 && ['solidFill', 'gradFill', 'noFill'].includes(f.localName)) f.remove();
       const fill = doc.createElementNS(NS.a, 'a:solidFill');
@@ -126,6 +127,25 @@ export async function readPptxText(data) {
     out.push(texts);
   }
   return out;
+}
+
+// 원래 글자색이 편집 화면 배경과 비슷하면 안 보임 → 글자색에 맞춰 상자 바탕을 밝게/어둡게 바꿈 (파일에는 영향 없음)
+function luminance(color) {
+  const m = color.match(/\d+(\.\d+)?/g);
+  if (!m || m.length < 3) return null;
+  const [r, g, b] = m.slice(0, 3).map((v) => { const c = Number(v) / 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+const hexToRgb = (hx) => { const v = hx.slice(1); const f = v.length === 3 ? [...v].map((x) => x + x).join('') : v; return `rgb(${parseInt(f.slice(0, 2), 16)},${parseInt(f.slice(2, 4), 16)},${parseInt(f.slice(4, 6), 16)})`; };
+function fitContrast(el) {
+  const lums = [...el.querySelectorAll('[style*="color"], font[color]')]
+    .filter((n) => n.textContent.trim())
+    .map((n) => { const c = n.style?.color || n.getAttribute('color') || ''; return luminance(c.startsWith('#') ? hexToRgb(c) : c); })
+    .filter((v) => v !== null);
+  const dark = lums.filter((v) => v < 0.4).length;
+  const light = lums.length - dark;
+  el.classList.toggle('paper-light', dark > 0 && dark >= light);
+  el.classList.toggle('paper-dark', light > dark);
 }
 
 export async function createPptxEditor(stage, toolbar, data, { detail = false } = {}) {
@@ -246,8 +266,9 @@ export async function createPptxEditor(stage, toolbar, data, { detail = false } 
           h('button', { title: '아래로', disabled: i === live.length - 1, onclick: () => move(s, 1) }, '↓'),
           h('button', { title: '슬라이드 삭제', class: 'danger', onclick: () => remove(s) }, '삭제')) : null),
       s.boxes.length ? s.boxes.map((b) => {
-        const el = h('div', { class: 'box-edit', contenteditable: 'true', spellcheck: 'false', 'data-hint': b.hint || '', onfocus: () => { lastBox = el; }, oninput: () => { dirty = true; } });
+        const el = h('div', { class: 'box-edit', contenteditable: 'true', spellcheck: 'false', 'data-hint': b.hint || '', onfocus: () => { lastBox = el; }, oninput: () => { dirty = true; fitContrast(el); } });
         el.innerHTML = b.current;
+        fitContrast(el);
         b.el = el;
         return h('div', { class: 'box' }, h('span', {}, b.label), el);
       }) : h('p', { class: 'empty' }, '고칠 수 있는 글자 상자가 없습니다 (그림·표만 있는 슬라이드)'))));
