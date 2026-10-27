@@ -126,9 +126,24 @@ export async function viewPptx(stage, data) {
   stage.append(host);
   const width = Math.min(stage.clientWidth - 16, 960);
   const previewer = init(host, { width, height: Math.round(width * 9 / 16), mode: 'list' });
-  await previewer.preview(data);
+  await previewer.preview(data.slice(0));
   neutralizeLinks(host);
+  // 일부 프로그램(구글 슬라이드·자동 생성 도구 등)이 만든 파일은 미리보기 부품이 못 그림 → 글자만이라도 보여줌
+  if (!previewer.slideCount) {
+    previewer.destroy?.();
+    host.replaceChildren(await pptxTextFallback(data));
+  }
   return () => previewer.destroy?.();
+}
+
+async function pptxTextFallback(data) {
+  const { readPptxText } = await import('./pptx-editor.js');
+  const slides = await readPptxText(data);
+  return h('div', { class: 'pptx-fallback' },
+    h('div', { class: 'legacy-banner' }, h('b', {}, '디자인 미리보기를 그리지 못해 글자만 보여 드립니다'), h('span', {}, '"편집"으로 글자를 고쳐 저장하면 디자인은 원본 그대로 유지됩니다.')),
+    ...slides.map((s, i) => h('section', { class: 'slide-card' },
+      h('div', { class: 'slide-head' }, h('b', {}, `슬라이드 ${i + 1}`)),
+      ...s.map((t) => h('p', { class: 'fallback-text' }, t)))));
 }
 
 // ---------- HWP / HWPX (rhwp: Rust+WASM, 캔버스로만 그려서 문서 속 코드가 실행되지 않음) ----------

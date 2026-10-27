@@ -15,3 +15,4 @@ android/app/src/main/assets/public/
 # 로컬 도구 설정
 .claude/
 release/
+public/hwp-studio/

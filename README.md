@@ -16,16 +16,24 @@
 | PDF | ✅ 확대/축소 | – | 원본 |
 | 워드 DOCX | ✅ 원본 서식 | ✅ 글·표·그림·목록·글자색 | DOCX · PDF · TXT |
 | 엑셀 XLSX · XLS · CSV | ✅ | ✅ 값·수식(SUM, AVERAGE, IF 등)·시트 추가 | XLSX · CSV · PDF |
-| 파워포인트 PPTX | ✅ | – | 원본 |
-| 한글 HWP · HWPX | ✅ | – | 원본 |
+| 파워포인트 PPTX | ✅ | ✅ 슬라이드 글자 고치기·순서 바꾸기·삭제 (디자인은 그대로) | PPTX |
+| 한글 HWP · HWPX | ✅ | ✅ 한글처럼 편집 (메뉴·툴바·표, [rhwp-studio](https://github.com/edwardkim/rhwp) 내장) | HWP · HWPX |
+| 옛 워드 DOC · 옛 파워포인트 PPT | ✅ 글자만 | DOCX·PPTX로 바꿔서 편집 | DOCX · PPTX |
 | TXT · 이미지 | ✅ | TXT → 문서 편집 | DOCX 등 |
 
-아직 안 되는 것: 옛 DOC/PPT 형식, 파워포인트·한글 편집, 워드 편집 시 복잡한 레이아웃(머리말·다단) 유지.
+아직 안 되는 것: 옛 DOC/PPT의 서식·그림, 파워포인트 도형·그림 편집, 워드 편집 시 복잡한 레이아웃(머리말·다단) 유지.
+휴대폰에서 한글 편집기는 PC용 화면이라 메뉴가 작게 보입니다.
 
 ## 설치·사용
 
 ### 안드로이드
-1. [Releases](../../releases)에서 `CleanOffice-버전.apk`를 내려받습니다.
+
+<p><img src="docs/qr-download.png" width="160" alt="APK 바로 받기 QR"></p>
+
+휴대폰 카메라로 위 QR을 찍으면 **최신 APK가 바로 내려받아집니다**
+(주소: `https://github.com/CapyKkuing/clean-office/releases/latest/download/CleanOffice.apk`).
+
+1. QR을 찍거나 [Releases](../../releases)에서 APK를 내려받습니다.
 2. 설치할 때 "출처를 알 수 없는 앱 설치"를 허용합니다.
 3. **파일 열기**를 누르면 폰의 기본 파일 선택창이 뜹니다. 구글 드라이브·원드라이브·드롭박스 등 폰에 설치된 클라우드 앱도 이 창에 나오므로, 거기서 열고 같은 파일에 그대로 저장할 수 있습니다.
 4. 카카오톡·파일 앱 등에서 문서를 누르고 "클린오피스로 열기"를 골라도 됩니다.
@@ -49,6 +57,7 @@
 
 ```
 npm install
+npm run hwp-studio     # 한글 편집기(rhwp-studio)를 소스에서 빌드해 public/hwp-studio 에 넣음 (처음 1번, git 필요)
 npm run dev            # 개발 서버 (http://localhost:5173)
 npm run build          # 웹 빌드 (dist)
 npm start              # PC 서버 (dist + 폰 연결)
@@ -61,6 +70,8 @@ cd android && gradlew assembleRelease   # APK (JDK 21, Android SDK 필요)
 - `src/files.js` 기기별 열기·저장 (안드로이드 파일 선택창 / 크롬·엣지 파일 핸들 / 다운로드)
 - `src/pc-link.js` PC↔폰 연결 화면, `server/server.mjs` PC 쪽 서버
 - `android/.../DocFilesPlugin.java` 안드로이드 파일 선택창·같은 파일 저장·"클린오피스로 열기"
+- `src/pptx-editor.js` PPTX 글자 편집 (슬라이드 XML의 글자만 바꿈), `src/legacy.js` 옛 DOC·PPT 글자 꺼내기
+- `src/hwp-editor.js` 한글 편집기 연결, `tools/build-hwp-studio.mjs` 편집기 오프라인 빌드 (외부 웹폰트 끔)
 
 PC 서버 보안: 연결 코드가 없으면 거부, 10번 틀리면 1분 잠금, 공유 폴더 밖 접근·바로가기 차단, QR·코드 정보는 그 PC의 클린오피스 화면에서만 보임(출처·접속주소 검사). 알려진 한계: 통신이 암호화되지 않음(HTTPS는 추후 과제) → 믿을 수 있는 와이파이에서만 사용.
 
@@ -70,6 +81,8 @@ PC 서버 보안: 연결 코드가 없으면 거부, 10번 틀리면 1분 잠금
 한글 문서 표시는 [rhwp](https://github.com/edwardkim/rhwp)를 사용합니다.
 
 ## 변경 기록
+
+- **0.2.0** (2026-10-27) 한글(HWP·HWPX) 편집기 내장, 파워포인트 글자 편집, 옛 DOC·PPT 열기·새 형식으로 바꾸기, 화면 디자인 새로 정돈, QR로 APK 바로 받기. APK 크기가 커짐(한글 편집 엔진 포함).
 
 - **0.1.2** (2026-10-27) 외부 보안 검수(2차) 반영: 조작된 파일 이름으로 앱 안에서 코드가 실행될 수 있던 문제 수정. 잘못된 요청 한 번에 PC 서버가 꺼지던 문제 수정. 엑셀 수식의 참조 범위(20만 칸)와 표시 열 수 상한. 공유 폴더 안 바로가기(정션)로 폴더 밖 파일에 닿던 문제 차단. 문서 속 링크 정화(javascript: 링크 제거, 외부 링크는 새 창).
 

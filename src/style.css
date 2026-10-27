@@ -1,25 +1,31 @@
 :root {
-  --bg: #f6f4ee;
+  /* 디자인 A — 부드러운 미니멀 */
+  --bg: #f4f5f2;
   --surface: #ffffff;
-  --surface-2: #efece4;
-  --ink: #1d2a26;
-  --ink-2: #5b6a64;
-  --line: #e2ddd2;
-  --brand: #1f6f5c;
-  --brand-2: #e3efe9;
-  --doc: #2f5fb3;
-  --sheet: #23804a;
-  --slide: #c75b2a;
-  --pdf: #c23a3a;
-  --hwp: #2a7fb8;
-  --radius: 16px;
-  --shadow: 0 1px 2px rgba(0,0,0,.04), 0 6px 20px rgba(30,40,30,.06);
+  --surface-2: #f0f2ee;
+  --ink: #17201c;
+  --ink-2: #6b7671;
+  --line: #e7eae5;
+  --brand: #1b7a5f;
+  --brand-hi: #2a9d7c;
+  --brand-2: #e6f3ee;
+  --doc: #2f64c8;
+  --sheet: #1f8a4c;
+  --slide: #d0602b;
+  --pdf: #cf3f3f;
+  --hwp: #2a86c2;
+  --radius: 22px;
+  --radius-sm: 12px;
+  --shadow: 0 1px 2px rgba(16,24,20,.04), 0 8px 24px rgba(16,24,20,.06);
+  --shadow-lg: 0 2px 6px rgba(0,0,0,.04), 0 18px 40px rgba(16,24,20,.08);
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #141917; --surface: #1c2320; --surface-2: #232b28; --ink: #e8ece9; --ink-2: #9aa8a2;
-    --line: #2e3833; --brand: #4fb393; --brand-2: #1f2e29; --shadow: 0 1px 2px rgba(0,0,0,.3);
+    --bg: #111513; --surface: #1a201d; --surface-2: #222a26; --ink: #ecf1ee; --ink-2: #93a19b;
+    --line: #2a332f; --brand: #3fb88f; --brand-hi: #2a9d7c; --brand-2: #1c2e27;
+    --shadow: 0 0 0 1px rgba(255,255,255,.03), 0 8px 24px rgba(0,0,0,.35);
+    --shadow-lg: 0 0 0 1px rgba(255,255,255,.03), 0 18px 40px rgba(0,0,0,.45);
     color-scheme: dark;
   }
 }
@@ -213,3 +219,70 @@ table.grid td.bold { font-weight: 700; }
 .pc-card .hint { font-size: 13px; text-align: left; }
 .pc-card .warn { color: var(--pdf); }
 .warn-line { color: var(--slide); font-size: 13px; }
+
+/* ===== 디자인 A — 부드러운 미니멀 (기존 규칙 위에 덮어씀) ===== */
+body { letter-spacing: -0.01em; }
+.topbar { background: color-mix(in srgb, var(--surface) 84%, transparent); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); padding-block: calc(env(safe-area-inset-top) + 12px) 12px; }
+.brand { font-size: 18px; letter-spacing: -0.02em; }
+.brand img { width: 30px; height: 30px; border-radius: 9px; }
+.home { padding-top: 32px; }
+.hero h1 { font-size: 30px; font-weight: 800; letter-spacing: -0.04em; }
+.hero p { font-size: 15px; }
+.cards { gap: 14px; margin: 26px 0 34px; }
+.card { border: 0; border-radius: var(--radius); padding: 20px; transition: transform .15s ease, box-shadow .15s ease; }
+.card:hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); border: 0; }
+.card:active { transform: translateY(0) scale(.99); }
+.card strong { font-size: 17px; letter-spacing: -0.02em; }
+.card small { font-size: 12.5px; }
+.card-open { background: linear-gradient(135deg, var(--brand), var(--brand-hi)); }
+.card-ico { width: 44px; height: 44px; border-radius: 14px; margin-bottom: 10px; }
+.card-open .card-ico { background: rgba(255,255,255,.18); }
+.card-ico.drive { background: color-mix(in srgb, var(--doc) 12%, var(--surface)); color: var(--doc); }
+.recent h2 { font-size: 18px; letter-spacing: -0.02em; }
+.recent-list { border: 0; box-shadow: var(--shadow); border-radius: var(--radius); }
+.recent-list li { border-top-color: var(--surface-2); padding: 14px 16px; }
+.badge { border-radius: var(--radius-sm); font-size: 11px; letter-spacing: .02em; }
+.btn, .icon-btn { border-radius: var(--radius-sm); }
+.btn.primary { box-shadow: 0 4px 12px color-mix(in srgb, var(--brand) 30%, transparent); }
+.toolbar { background: color-mix(in srgb, var(--surface) 92%, transparent); padding: 8px 12px; gap: 6px; }
+.toolbar button, .toolbar select, .toolbar label.tb { border-radius: 10px; }
+.editor-page { border-radius: 16px; box-shadow: var(--shadow-lg); }
+.formula-bar input, .formula-bar .addr { border-radius: 10px; }
+.notice { border: 0; border-radius: var(--radius); box-shadow: var(--shadow); }
+.menu { border: 0; border-radius: 16px; box-shadow: var(--shadow-lg); }
+.menu button { border-radius: 10px; }
+.toast { border-radius: 14px; }
+.pdf-page, .docx-host .docx-wrapper > section.docx { border-radius: 6px; }
+.sheet-tabs button { border-radius: 10px; }
+.drive-tabs button:not(.link-btn) { border-color: transparent; background: var(--surface); box-shadow: var(--shadow); }
+.pc-card .qr { border-radius: 18px; }
+/* 좁은 화면: 표 칸을 줄여 숫자가 잘리지 않게 */
+@media (max-width: 640px) {
+  table.grid td { min-width: 72px; }
+  table.grid th { min-width: 34px; }
+}
+
+/* ===== 0.2.0 새 화면 ===== */
+.hwp-edit-host { position: absolute; inset: 0; background: var(--surface); }
+.hwp-edit-host iframe { display: block; border: 0; width: 100%; height: 100%; }
+.tb-note { color: var(--ink-2); font-size: 13px; padding: 0 6px; white-space: nowrap; }
+.pptx-edit { width: min(860px, calc(100% - 24px)); margin: 16px auto 60px; display: flex; flex-direction: column; gap: 14px; }
+.slide-card { background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); padding: 16px 18px; display: flex; flex-direction: column; gap: 12px; }
+.slide-head { display: flex; align-items: center; justify-content: space-between; }
+.slide-head b { font-size: 15px; letter-spacing: -0.01em; }
+.slide-tools { display: flex; gap: 6px; }
+.slide-tools button { border: 0; background: var(--surface-2); border-radius: 10px; min-width: 36px; height: 34px; padding: 0 10px; }
+.slide-tools button:disabled { opacity: .35; }
+.slide-tools button.danger { color: var(--pdf); }
+.slide-card .box { display: flex; flex-direction: column; gap: 6px; }
+.slide-card .box span { font-size: 12px; color: var(--ink-2); font-weight: 600; letter-spacing: .02em; }
+.slide-card textarea { width: 100%; resize: none; border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; font: inherit; font-size: 15px; line-height: 1.5; background: var(--surface-2); color: var(--ink); overflow: hidden; }
+.slide-card textarea:focus { outline: 2px solid color-mix(in srgb, var(--brand) 45%, transparent); background: var(--surface); }
+.legacy-banner { width: min(900px, calc(100% - 16px)); margin: 16px auto 0; padding: 14px 18px; border-radius: 16px; background: color-mix(in srgb, var(--slide) 10%, var(--surface)); display: flex; flex-direction: column; gap: 4px; }
+.legacy-banner span { color: var(--ink-2); font-size: 14px; }
+.legacy-text { font-family: inherit; border-radius: 16px; }
+.legacy-slide { padding: 10px 0; border-bottom: 1px solid var(--line); }
+.legacy-slide b { display: block; margin-bottom: 4px; }
+.pptx-fallback { width: min(860px, calc(100% - 24px)); margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+.pptx-fallback .legacy-banner { width: 100%; margin: 0; }
+.fallback-text { margin: 0; line-height: 1.55; }

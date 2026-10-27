@@ -11,6 +11,8 @@ const hasFsAccess = typeof window !== 'undefined' && 'showOpenFilePicker' in win
 const ACCEPT = {
   'application/pdf': ['.pdf'],
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
+  'application/msword': ['.doc'],
+  'application/vnd.ms-powerpoint': ['.ppt'],
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx', '.xlsm'],
   'application/vnd.ms-excel': ['.xls'],
   'text/csv': ['.csv'],
@@ -27,6 +29,9 @@ export const MIME = {
   csv: 'text/csv',
   pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
   hwp: 'application/x-hwp',
+  hwpx: 'application/hwp+zip',
+  doc: 'application/msword',
+  ppt: 'application/vnd.ms-powerpoint',
   txt: 'text/plain',
 };
 

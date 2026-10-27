@@ -37,6 +37,7 @@ export default defineConfig({
       workbox: {
         globPatterns: ['**/*.{js,mjs,css,html,svg,png,woff2}'],
         maximumFileSizeToCacheInBytes: 12 * 1024 * 1024,
+        globIgnores: ['hwp-studio/**'], // 한글 편집기는 필요할 때만 불러옴
       },
     }),
   ],

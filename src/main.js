@@ -171,10 +171,10 @@ async function openFile(name, data, { remember = true, src = {} } = {}) {
       openSheet(name, data, src);
     } else if (ext === 'pptx') {
       current.cleanup = await viewPptx(stage, data);
-      viewerActions(name, data, { src });
+      viewerActions(name, data, { src, edit: () => editWith('pptx', name, data, src) });
     } else if (ext === 'hwp' || ext === 'hwpx') {
       current.cleanup = await viewHwp(stage, data, toolbar);
-      viewerActions(name, data, { src });
+      viewerActions(name, data, { src, edit: () => editWith(ext, name, data, src) });
     } else if (['txt', 'md', 'log', 'json'].includes(ext)) {
       viewText(stage, data);
       viewerActions(name, data, { src, edit: () => editText(name, data, src) });
@@ -182,9 +182,9 @@ async function openFile(name, data, { remember = true, src = {} } = {}) {
       viewImage(stage, data, name);
       viewerActions(name, data, { src });
     } else if (['doc', 'ppt'].includes(ext)) {
-      viewNotice(stage, `<b>예전 형식(.${esc(ext)})은 아직 열 수 없습니다.</b><br>워드/파워포인트에서 <b>.${esc(ext)}x</b> 또는 <b>PDF</b>로 저장한 뒤 열어 주세요.`);
+      await viewLegacy(name, data, ext);
     } else {
-      viewNotice(stage, `<b>.${esc(ext.slice(0, 20)) || '알 수 없는'} 파일은 지원하지 않습니다.</b><br>PDF, DOCX, XLSX, XLS, CSV, PPTX, HWP, HWPX, TXT, 이미지 파일을 열 수 있습니다.`);
+      viewNotice(stage, `<b>.${esc(ext.slice(0, 20)) || '알 수 없는'} 파일은 지원하지 않습니다.</b><br>PDF, DOC, DOCX, XLSX, XLS, CSV, PPT, PPTX, HWP, HWPX, TXT, 이미지 파일을 열 수 있습니다.`);
     }
   } catch (e) {
     console.error(e);
@@ -245,6 +245,79 @@ function openDocEditor(name, html, src = {}) {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); saveDocx(); }
   });
   editor.page.focus();
+}
+
+// ---------- 옛 DOC·PPT: 글자 보기 + 새 형식으로 바꾸기 ----------
+async function viewLegacy(name, data, ext) {
+  const legacy = await import('./legacy.js');
+  const res = ext === 'doc' ? await legacy.extractDoc(data) : await legacy.extractPpt(data);
+  const base = baseName(name);
+  const empty = ext === 'doc' ? !res.paragraphs.some((p) => p.trim()) : !res.slides.length;
+  stage.append(h('div', { class: 'legacy-banner' },
+    h('b', {}, `예전 형식(.${ext}) 문서라 글자만 보여 드립니다`),
+    h('span', {}, ext === 'doc'
+      ? '서식·그림은 빠집니다. "워드로 바꾸기"를 누르면 DOCX로 편집·저장할 수 있어요.'
+      : '디자인·그림은 빠집니다. "PPTX로 바꾸기"를 누르면 새 파워포인트로 만들어 줍니다.')));
+  const body = h('div', { class: 'text-view legacy-text' });
+  if (empty) body.textContent = '꺼낼 수 있는 글자가 없습니다.';
+  else if (ext === 'doc') body.textContent = res.paragraphs.join('\n');
+  else body.append(...res.slides.map((s, i) => h('div', { class: 'legacy-slide' },
+    h('b', {}, `${i + 1}. ${s.title || '(제목 없음)'}`), ...s.body.map((t) => h('div', {}, `• ${t}`)))));
+  stage.append(body);
+  if (empty) return;
+  if (ext === 'doc') {
+    actions.append(btn('워드로 바꾸기', () => openDocEditor(`${base}.docx`, legacy.docToEditorHtml(res.paragraphs), {}), { primary: true, icon: '✎' }));
+  } else {
+    actions.append(btn('PPTX로 바꾸기', async () => {
+      busy(true, 'PPTX로 바꾸는 중…');
+      try {
+        const blob = await legacy.pptToPptxBlob(res.slides);
+        busy(false);
+        openFile(`${base}.pptx`, await blob.arrayBuffer(), { src: {} });
+      } catch (e) {
+        busy(false);
+        toast(`바꾸지 못했습니다: ${e.message}`, 5000);
+      }
+    }, { primary: true, icon: '⇄' }));
+  }
+}
+
+// ---------- 파워포인트·한글 편집 (공통 화면) ----------
+async function editWith(kind, name, data, src) {
+  const label = kind === 'pptx' ? '파워포인트' : '한글';
+  if (kind === 'pptx' && !confirm('슬라이드의 글자를 고치는 화면으로 바꿉니다.\n디자인·그림·도형 위치는 그대로 두고 글자만 바뀝니다.\n저장 전까지 원본 파일은 바뀌지 않습니다.')) return;
+  current?.cleanup?.();
+  showWorkspace(name);
+  busy(true, `${label} 편집 준비 중…`);
+  let editor;
+  try {
+    editor = kind === 'pptx'
+      ? await (await import('./pptx-editor.js')).createPptxEditor(stage, toolbar, data.slice(0))
+      : await (await import('./hwp-editor.js')).createHwpEditor(stage, data.slice(0), name);
+  } catch (e) {
+    busy(false);
+    stage.replaceChildren();
+    viewNotice(stage, `<b>${label} 편집 화면을 열지 못했습니다.</b><br><small style="color:var(--ink-2)">${esc(String(e.message || e).slice(0, 200))}</small>`);
+    return;
+  }
+  busy(false);
+  current = { name, editor, src, cleanup: () => editor.destroy() };
+  const ext = extOf(name);
+  const make = (fmt = ext) => editor.toBlob(fmt);
+  const save = async () => {
+    busy(true, '저장 준비 중…');
+    let blob;
+    try { blob = await make(); } catch (e) { busy(false); return toast(`저장하지 못했습니다: ${e.message}`, 5000); }
+    busy(false);
+    if (await persist(name, blob, src)) editor.markSaved();
+  };
+  const items = [...commonItems(name, () => make(), src)];
+  if (kind !== 'pptx') {
+    const other = ext === 'hwp' ? 'hwpx' : 'hwp';
+    items.push([`${other.toUpperCase()}로 내보내기`, () => exportCopy(`${baseName(name)}.${other}`, () => make(other))]);
+  }
+  actions.append(btn('더보기', (e) => menu(e.currentTarget, items), { icon: '⋯', title: '다른 형식·공유' }),
+    btn(src.pc ? 'PC에 저장' : '저장', save, { primary: true, icon: '⤓' }));
 }
 
 // ---------- 시트 편집 ----------
