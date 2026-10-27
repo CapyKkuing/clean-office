@@ -12,6 +12,7 @@
 | @rhwp/core | 0.8.7 | MIT | https://github.com/edwardkim/rhwp |
 | docx | 9.14.0 | MIT | https://github.com/dolanmiu/docx |
 | docx-preview | 0.4.1 | Apache-2.0 | https://github.com/VolodymyrBaydalka/docxjs |
+| dompurify | 3.4.17 | (MPL-2.0 OR Apache-2.0) | https://github.com/cure53/DOMPurify |
 | html2canvas | 1.4.1 | MIT | https://github.com/niklasvh/html2canvas |
 | jspdf | 4.2.1 | MIT | https://github.com/parallax/jsPDF |
 | mammoth | 1.13.0 | BSD-2-Clause | https://github.com/mwilliamson/mammoth.js |

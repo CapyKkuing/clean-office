@@ -18,6 +18,8 @@ const FUNCS = {
 FUNCS.AVG = FUNCS.AVERAGE;
 FUNCS.CONCATENATE = FUNCS.CONCAT;
 
+const MAX_RANGE_CELLS = 200_000; // 수식 하나가 참조할 수 있는 최대 칸 수
+
 class FormulaError extends Error {}
 const err = (code) => { throw new FormulaError(code); };
 const isNum = (x) => typeof x === 'number' && Number.isFinite(x);
@@ -67,6 +69,9 @@ export function evaluate(formula, getCell) {
       const parse = (s) => { const m = s.match(/([A-Z]+)(\d+)/); return [Number(m[2]) - 1, colToNum(m[1])]; };
       if (ref.includes(':')) {
         const [a, b] = ref.split(':').map(parse);
+        // 범위가 너무 크면 계산하지 않음 (악성 파일로 앱이 멈추는 것 방지)
+        const cells = (Math.abs(a[0] - b[0]) + 1) * (Math.abs(a[1] - b[1]) + 1);
+        if (cells > MAX_RANGE_CELLS) err('#LIMIT!');
         const rows = [];
         for (let r = Math.min(a[0], b[0]); r <= Math.max(a[0], b[0]); r++) {
           const row = [];

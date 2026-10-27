@@ -75,6 +75,7 @@ function sameSiteOnly(req) {
   return [`http://localhost:${PORT}`, `http://127.0.0.1:${PORT}`].includes(origin);
 }
 
+// 글자 수준 검사: 상위 폴더 이동·특수문자 차단
 function safePath(rel = '') {
   if (typeof rel !== 'string' || rel.includes('\0')) return null;
   const parts = rel.split(/[\\/]+/).filter(Boolean);
@@ -82,6 +83,26 @@ function safePath(rel = '') {
   const full = path.resolve(ROOT(), ...parts);
   const root = ROOT();
   if (full !== root && !full.startsWith(root + path.sep)) return null;
+  return full;
+}
+
+// 실제 경로 검사: 공유 폴더 안에 바로가기(심볼릭 링크·정션)가 있어도 폴더 밖으로 못 나가게.
+// 경로의 각 단계가 링크면 거부하고, 이미 있는 부분의 실제 위치가 공유 폴더 안인지 확인한다.
+async function realSafePath(rel = '') {
+  const full = safePath(rel);
+  if (!full) return null;
+  const root = ROOT();
+  const rootReal = await fsp.realpath(root).catch(() => null);
+  if (!rootReal) return null;
+  let cur = root;
+  for (const part of path.relative(root, full).split(path.sep).filter(Boolean)) {
+    cur = path.join(cur, part);
+    const st = await fsp.lstat(cur).catch(() => null);
+    if (!st) break; // 아직 없는 경로(새 파일·새 폴더)는 여기까지만 검사
+    if (st.isSymbolicLink()) return null;
+    const real = await fsp.realpath(cur).catch(() => null);
+    if (!real || (real !== rootReal && !real.startsWith(rootReal + path.sep))) return null;
+  }
   return full;
 }
 
@@ -157,14 +178,14 @@ async function api(req, res, url) {
   if (p === '/api/info') return send(res, 200, { name: os.hostname(), folder: path.basename(ROOT()) });
 
   if (p === '/api/list' && req.method === 'GET') {
-    const dir = safePath(url.searchParams.get('path') || '');
+    const dir = await realSafePath(url.searchParams.get('path') || '');
     if (!dir) return send(res, 400, { error: '잘못된 경로' });
     const entries = await fsp.readdir(dir, { withFileTypes: true }).catch(() => null);
     if (!entries) return send(res, 404, { error: '폴더가 없습니다' });
     const items = [];
     for (const e of entries) {
       if (e.name.startsWith('.') || e.name.startsWith('~$')) continue; // 숨김·오피스 임시 파일
-      if (!e.isFile() && !e.isDirectory()) continue;
+      if (e.isSymbolicLink() || (!e.isFile() && !e.isDirectory())) continue; // 바로가기는 보여주지 않음
       const st = await fsp.stat(path.join(dir, e.name)).catch(() => null);
       if (!st) continue;
       items.push({ name: e.name, dir: e.isDirectory(), size: st.size, mtime: st.mtimeMs });
@@ -174,7 +195,7 @@ async function api(req, res, url) {
   }
 
   if (p === '/api/file') {
-    const file = safePath(url.searchParams.get('path') || '');
+    const file = await realSafePath(url.searchParams.get('path') || '');
     if (!file || file === ROOT()) return send(res, 400, { error: '잘못된 경로' });
 
     if (req.method === 'GET') {
@@ -231,9 +252,17 @@ async function staticFile(req, res, url) {
   fs.createReadStream(target).pipe(res);
 }
 
-const server = http.createServer(async (req, res) => {
-  const url = new URL(req.url, 'http://x');
+const server = http.createServer((req, res) => {
+  handle(req, res).catch((e) => {
+    console.error(e);
+    try { if (!res.headersSent) send(res, 500, { error: '서버 오류' }); else res.end(); } catch { /* 이미 닫힘 */ }
+  });
+});
+
+async function handle(req, res) {
+  let url;
   try {
+    try { url = new URL(req.url, 'http://x'); } catch { return send(res, 400, { error: '잘못된 요청' }); }
     if (!hostAllowed(req)) { res.writeHead(421, { 'Content-Type': 'application/json; charset=utf-8' }); return res.end(JSON.stringify({ error: '잘못된 접속 주소' })); }
     if (req.method === 'OPTIONS') { res.writeHead(204, cors()); return res.end(); }
     if (url.pathname.startsWith('/api/')) return await api(req, res, url);
@@ -244,7 +273,10 @@ const server = http.createServer(async (req, res) => {
     if (!res.headersSent) send(res, e.status || 500, { error: e.status ? e.message : '서버 오류' });
     else res.end();
   }
-});
+}
+
+process.on('uncaughtException', (e) => console.error('처리되지 않은 오류', e));
+process.on('unhandledRejection', (e) => console.error('처리되지 않은 오류', e));
 
 server.on('error', (e) => {
   if (e.code === 'EADDRINUSE') {

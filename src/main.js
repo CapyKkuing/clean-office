@@ -1,8 +1,8 @@
 import { App } from '@capacitor/app';
-import { h, btn, menu, toast, busy, baseName, extOf } from './ui.js';
+import { h, btn, menu, toast, busy, baseName, extOf, esc } from './ui.js';
 import { listRecent, getRecent, saveRecent, removeRecent, clearRecent } from './store.js';
 import { shareBlob } from './save.js';
-import { viewPdf, viewDocx, viewPptx, viewHwp, viewText, viewImage, viewNotice } from './viewers.js';
+import { viewPdf, viewDocx, viewPptx, viewHwp, viewText, viewImage, viewNotice, sanitizeHtml, neutralizeLinks } from './viewers.js';
 import { createDocEditor } from './doc-editor.js';
 import { createSheetEditor } from './sheet-editor.js';
 import { htmlToDocx, elementToPdf, htmlToText } from './export.js';
@@ -182,14 +182,14 @@ async function openFile(name, data, { remember = true, src = {} } = {}) {
       viewImage(stage, data, name);
       viewerActions(name, data, { src });
     } else if (['doc', 'ppt'].includes(ext)) {
-      viewNotice(stage, `<b>예전 형식(.${ext})은 아직 열 수 없습니다.</b><br>워드/파워포인트에서 <b>.${ext}x</b> 또는 <b>PDF</b>로 저장한 뒤 열어 주세요.`);
+      viewNotice(stage, `<b>예전 형식(.${esc(ext)})은 아직 열 수 없습니다.</b><br>워드/파워포인트에서 <b>.${esc(ext)}x</b> 또는 <b>PDF</b>로 저장한 뒤 열어 주세요.`);
     } else {
-      viewNotice(stage, `<b>.${ext || '알 수 없는'} 파일은 지원하지 않습니다.</b><br>PDF, DOCX, XLSX, XLS, CSV, PPTX, HWP, HWPX, TXT, 이미지 파일을 열 수 있습니다.`);
+      viewNotice(stage, `<b>.${esc(ext.slice(0, 20)) || '알 수 없는'} 파일은 지원하지 않습니다.</b><br>PDF, DOCX, XLSX, XLS, CSV, PPTX, HWP, HWPX, TXT, 이미지 파일을 열 수 있습니다.`);
     }
   } catch (e) {
     console.error(e);
     stage.replaceChildren();
-    viewNotice(stage, `<b>파일을 여는 중 문제가 생겼습니다.</b><br>파일이 손상됐거나 암호가 걸려 있을 수 있습니다.<br><small style="color:var(--ink-2)">${String(e.message || e).slice(0, 200).replace(/</g, '&lt;')}</small>`);
+    viewNotice(stage, `<b>파일을 여는 중 문제가 생겼습니다.</b><br>파일이 손상됐거나 암호가 걸려 있을 수 있습니다.<br><small style="color:var(--ink-2)">${esc(String(e.message || e).slice(0, 200))}</small>`);
   } finally {
     busy(false);
   }
@@ -208,7 +208,7 @@ async function editDocx(name, data, src) {
   try {
     const mammoth = await import('mammoth');
     const { value } = await mammoth.convertToHtml({ arrayBuffer: data.slice(0) });
-    openDocEditor(name, value || '<p><br></p>', src);
+    openDocEditor(name, await sanitizeHtml(value || '<p><br></p>'), src);
   } finally {
     busy(false);
   }
@@ -224,6 +224,7 @@ function openDocEditor(name, html, src = {}) {
   current?.cleanup?.();
   showWorkspace(name);
   const editor = createDocEditor(stage, toolbar, html);
+  neutralizeLinks(editor.page);
   current = { name, editor, src };
   const base = baseName(name);
   const docx = () => htmlToDocx(editor.page);

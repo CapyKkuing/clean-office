@@ -1,5 +1,24 @@
 import { h } from './ui.js';
 
+// 문서에서 나온 링크 무력화: javascript: 같은 위험한 주소는 지우고, 나머지는 새 창으로만 열리게
+const SAFE_HREF = /^(https?:|mailto:|tel:|#)/i;
+export function neutralizeLinks(root) {
+  root.querySelectorAll('a[href]').forEach((a) => {
+    const href = (a.getAttribute('href') || '').trim();
+    if (!SAFE_HREF.test(href)) a.removeAttribute('href');
+    else { a.setAttribute('target', '_blank'); a.setAttribute('rel', 'noopener noreferrer'); }
+  });
+  root.querySelectorAll('[onload],[onerror],[onclick],script,iframe,object,embed,form').forEach((el) => el.remove());
+}
+
+// 문서를 HTML로 바꾼 결과를 화면에 넣기 전 정화 (스크립트·이벤트·위험 링크 제거, 그림 data: 주소는 허용)
+let purifyPromise;
+export async function sanitizeHtml(html) {
+  purifyPromise ??= import('dompurify').then((m) => m.default);
+  const DOMPurify = await purifyPromise;
+  return DOMPurify.sanitize(html, { USE_PROFILES: { html: true }, FORBID_TAGS: ['style', 'form', 'input', 'button'], ADD_ATTR: ['target'] });
+}
+
 // ---------- PDF ----------
 let pdfjsPromise;
 function loadPdfjs() {
@@ -80,6 +99,7 @@ export async function viewDocx(stage, data) {
     className: 'docx', inWrapper: true, ignoreLastRenderedPageBreak: true,
     experimental: true, renderHeaders: true, renderFooters: true, useBase64URL: true,
   });
+  neutralizeLinks(host);
   // 좁은 화면이면 페이지를 화면 폭에 맞게 축소
   const fit = () => {
     host.querySelectorAll('section.docx').forEach((sec) => {
@@ -107,6 +127,7 @@ export async function viewPptx(stage, data) {
   const width = Math.min(stage.clientWidth - 16, 960);
   const previewer = init(host, { width, height: Math.round(width * 9 / 16), mode: 'list' });
   await previewer.preview(data);
+  neutralizeLinks(host);
   return () => previewer.destroy?.();
 }
 

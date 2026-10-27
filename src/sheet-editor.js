@@ -3,6 +3,7 @@ import { h, toast } from './ui.js';
 import { evaluate } from './formula.js';
 
 const PAGE_ROWS = 500;
+const MAX_COLS = 260; // 화면에 만드는 열 수 상한 (파일이 수만 열을 주장해도 그대로 그리지 않음)
 
 export function createSheetEditor(stage, toolbar, data) {
   const wb = data ? XLSX.read(data, { type: 'array', cellFormula: true, cellNF: true, cellDates: true }) : XLSX.utils.book_new();
@@ -87,7 +88,7 @@ export function createSheetEditor(stage, toolbar, data) {
 
   function addCol() {
     const rg = range();
-    const cols = Math.max(rg.e.c + 4, 12);
+    const cols = Math.min(Math.max(rg.e.c + 4, 12), MAX_COLS);
     extend(rg.e.r, cols - 3);
   }
 
@@ -134,7 +135,7 @@ export function createSheetEditor(stage, toolbar, data) {
 
   function render() {
     const rg = range();
-    const cols = Math.max(rg.e.c + 4, 12);
+    const cols = Math.min(Math.max(rg.e.c + 4, 12), MAX_COLS);
     shownRows = Math.min(Math.max(rg.e.r + 30, 60), Math.max(PAGE_ROWS, shownRows));
     const thead = h('thead', {}, h('tr', {}, h('th', {}), ...Array.from({ length: cols }, (_, c) => h('th', {}, colName(c)))));
     const tbody = h('tbody');

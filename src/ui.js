@@ -48,6 +48,11 @@ export function menu(anchor, items) {
   setTimeout(() => document.addEventListener('click', closeMenus, { once: true }), 0);
 }
 
+// HTML 문자열에 끼워 넣을 때 쓰는 글자 치환 (파일 이름 등 외부에서 온 글자용)
+export function esc(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
 export function baseName(name) {
   return name.replace(/\.[^.]+$/, '');
 }
