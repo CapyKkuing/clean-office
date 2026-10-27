@@ -162,7 +162,8 @@ export function cssToHex(v) {
   return m ? `#${[m[1], m[2], m[3]].map((x) => Number(x).toString(16).padStart(2, '0')).join('')}` : null;
 }
 
-export const escHtml = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+export const escHtml = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const HEX = /^#[0-9a-f]{6}$/i;
 
 // 글자 덩어리 → HTML (편집 화면에 띄울 때)
 export function runsToHtml(runs) {
@@ -173,7 +174,7 @@ export function runsToHtml(runs) {
     if (r.bold) style.push('font-weight:bold');
     if (r.italic) style.push('font-style:italic');
     if (r.underline) style.push('text-decoration:underline');
-    if (r.color && r.color !== '#000000') style.push(`color:${r.color}`);
+    if (r.color && HEX.test(r.color) && r.color.toLowerCase() !== '#000000') style.push(`color:${r.color}`);
     return style.length ? `<span style="${style.join(';')}">${s}</span>` : s;
   }).join('');
 }

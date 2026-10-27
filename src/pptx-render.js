@@ -16,7 +16,17 @@ export const px = (emu) => Number(emu || 0) / EMU_PX;
 export const kids = (el, ns, name) => (el ? [...el.childNodes].filter((n) => n.nodeType === 1 && n.namespaceURI === ns && (!name || n.localName === name)) : []);
 export const kid = (el, ns, name) => kids(el, ns, name)[0] || null;
 export const first = (el, ns, name) => (el ? el.getElementsByTagNameNS(ns, name)[0] || null : null);
-const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+// 파일에서 온 값은 믿지 않음: 글꼴 이름은 글자·숫자·공백·-_ 만, 색은 6자리 16진수만 (style 속성 탈출 방지)
+const safeFont = (f) => (f ? String(f).replace(/[^\p{L}\p{N} _-]/gu, '').trim().slice(0, 60) : '');
+const HEX6 = /^[0-9A-Fa-f]{6}$/;
+let purify = null;
+// 만든 HTML은 DOMPurify 로 한 번 더 걸러서 넣음 (속성·태그 주입 2중 차단). 로드 전이면 글자만 남김
+export function setPurifier(p) { purify = p; }
+export function cleanHtml(html) {
+  if (purify) return purify.sanitize(html, { USE_PROFILES: { html: true }, FORBID_TAGS: ['style', 'form', 'input', 'button', 'a', 'img', 'svg', 'math'], FORBID_ATTR: ['href', 'src', 'srcset', 'xlink:href'] });
+  return html.replace(/<[^>]*>/g, '');
+}
 
 export function resolvePath(base, target) {
   if (target.startsWith('/')) return target.slice(1);
@@ -68,7 +78,7 @@ export function colorOf(parent, ctx, phClr) {
   } else if (c.localName === 'scrgbClr') {
     hex = ['r', 'g', 'b'].map((k) => Math.round(Number(c.getAttribute(k)) / 100000 * 255).toString(16).padStart(2, '0')).join('');
   }
-  if (!hex) return null;
+  if (!hex || !HEX6.test(hex)) return null;
   let rgb = hex2rgb(hex);
   let alpha = 1;
   for (const m of kids(c, NS.a)) {
@@ -261,9 +271,9 @@ const attrFrom = (list, a) => { for (const el of list) { const v = el?.getAttrib
 function fontFamily(rPr, ctx) {
   const f = (kid(rPr, NS.a, 'ea') || kid(rPr, NS.a, 'latin'))?.getAttribute('typeface');
   if (!f) return null;
-  if (f.startsWith('+mj')) return ctx.fonts?.major || null;
-  if (f.startsWith('+mn')) return ctx.fonts?.minor || null;
-  return f;
+  if (f.startsWith('+mj')) return safeFont(ctx.fonts?.major) || null;
+  if (f.startsWith('+mn')) return safeFont(ctx.fonts?.minor) || null;
+  return safeFont(f) || null;
 }
 
 // 문단 하나 → <p> HTML. 상속된 서식은 <p> 에, 직접 지정된 서식은 글자 덩어리(<span>)에 둠 (저장할 때 직접 지정분만 다시 씀)
@@ -279,8 +289,8 @@ export function paragraphHtml(p, node, ctx, fallbackColor, fontScale = 1) {
   if (color) css.push(`color:${color}`);
   if (attrFrom(defR, 'b') === '1') css.push('font-weight:bold');
   if (attrFrom(defR, 'i') === '1') css.push('font-style:italic');
-  const ff = defR.map((d) => fontFamily(d, ctx)).find(Boolean) || ctx.fonts?.minor;
-  if (ff) css.push(`font-family:'${ff.replace(/'/g, '')}',sans-serif`);
+  const ff = defR.map((d) => fontFamily(d, ctx)).find(Boolean) || safeFont(ctx.fonts?.minor);
+  if (ff) css.push(`font-family:'${ff}',sans-serif`);
   const algn = attrFrom(pList, 'algn');
   const ALG = { ctr: 'center', r: 'right', just: 'justify', dist: 'justify' };
   if (ALG[algn]) css.push(`text-align:${ALG[algn]}`);
@@ -300,7 +310,7 @@ export function paragraphHtml(p, node, ctx, fallbackColor, fontScale = 1) {
     if (!x) continue;
     if (kid(x, NS.a, 'buNone')) break;
     const ch = kid(x, NS.a, 'buChar');
-    if (ch) { bullet = ch.getAttribute('char') || '•'; break; }
+    if (ch) { bullet = (ch.getAttribute('char') || '•').slice(0, 2); break; }
     if (kid(x, NS.a, 'buAutoNum')) { bullet = '•'; break; }
   }
   // 글자 덩어리
@@ -321,7 +331,7 @@ export function paragraphHtml(p, node, ctx, fallbackColor, fontScale = 1) {
     const c = colorOf(kid(rPr, NS.a, 'solidFill'), ctx);
     if (c) st.push(`color:${c}`);
     const f = fontFamily(rPr, ctx);
-    if (f) st.push(`font-family:'${f.replace(/'/g, '')}',sans-serif`);
+    if (f) st.push(`font-family:'${f}',sans-serif`);
     html += st.length ? `<span style="${st.join(';')}">${esc(text)}</span>` : esc(text);
   }
   if (!html) {
@@ -335,8 +345,10 @@ export function paragraphHtml(p, node, ctx, fallbackColor, fontScale = 1) {
 
 // ---------- 그리기 ----------
 // ctx: { theme(name)→hex, fonts, image(part, rId)→url, layout:{tree,doc,part}, master:{tree,txStyles,part}, defaultTextStyle, part }
+const MAX_GROUP_DEPTH = 32; // 그룹 속 그룹이 비정상적으로 깊은 파일(스택 고갈 유도)은 그 아래를 건너뜀
 export function renderShape(node, ctx, opts = {}) {
   const ln = node.localName;
+  if (ln === 'grpSp' && (opts.depth || 0) >= MAX_GROUP_DEPTH) return null;
   const box = effectiveXfrm(node, ctx);
   if (!box && ln !== 'grpSp') return null;
   const el = document.createElement('div');
@@ -366,7 +378,7 @@ export function renderShape(node, ctx, opts = {}) {
     inner.style.transform = `scale(${sx},${sy}) translate(${-px(cx)}px,${-px(cy)}px)`;
     for (const c of kids(node, NS.p)) {
       if (!['sp', 'pic', 'grpSp', 'graphicFrame', 'cxnSp'].includes(c.localName)) continue;
-      const ce = renderShape(c, ctx, { inGroup: true });
+      const ce = renderShape(c, ctx, { inGroup: true, depth: (opts.depth || 0) + 1 });
       if (ce) inner.append(ce);
     }
     el.append(inner);
@@ -475,7 +487,7 @@ export function renderText(node, txBody, ctx, fallbackColor, w, hgt) {
   if (scale !== 1) { tx.style.zoom = String(scale); tx.style.width = `${w / scale}px`; tx.style.height = `${hgt / scale}px`; }
   const ph = phOf(node);
   const defaultColor = fallbackColor || (ctx.theme?.('tx1') ? `#${ctx.theme('tx1')}` : null);
-  tx.innerHTML = kids(txBody, NS.a, 'p').map((p) => paragraphHtml(p, node, ctx, defaultColor)).join('') || '<p><br></p>';
+  tx.innerHTML = cleanHtml(kids(txBody, NS.a, 'p').map((p) => paragraphHtml(p, node, ctx, defaultColor)).join('')) || '<p><br></p>';
   if (ph) {
     const prompt = { title: '제목을 입력하세요', ctrTitle: '제목을 입력하세요', subTitle: '부제목을 입력하세요' }[ph.type] || '텍스트를 입력하세요';
     tx.dataset.hint = prompt;
@@ -501,7 +513,7 @@ function renderTable(tbl, ctx) {
       const fill = colorOf(kid(kid(tc, NS.a, 'tcPr'), NS.a, 'solidFill'), ctx);
       if (fill) td.style.background = fill;
       const fake = { localName: 'sp', childNodes: [] };
-      td.innerHTML = kids(kid(tc, NS.a, 'txBody'), NS.a, 'p').map((p) => paragraphHtml(p, fake, ctx, null)).join('');
+      td.innerHTML = cleanHtml(kids(kid(tc, NS.a, 'txBody'), NS.a, 'p').map((p) => paragraphHtml(p, fake, ctx, null)).join(''));
       row.append(td);
     }
     t.append(row);

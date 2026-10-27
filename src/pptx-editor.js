@@ -2,6 +2,7 @@
 // 디자인(배경·도형 위치·글꼴)은 원본 파일 그대로 두고, 글자 부분만 바꿔 저장한다.
 import { h, toast, icon } from './ui.js';
 import { buildRichToolbar, paragraphRuns, blockAlign, runsToHtml } from './rich-toolbar.js';
+import { cleanHtml, setPurifier } from './pptx-render.js';
 
 const NS = {
   a: 'http://schemas.openxmlformats.org/drawingml/2006/main',
@@ -56,7 +57,7 @@ function paraToHtml(p) {
       bold: rPr?.getAttribute('b') === '1',
       italic: rPr?.getAttribute('i') === '1',
       underline: !!rPr?.getAttribute('u') && rPr.getAttribute('u') !== 'none',
-      color: clr ? `#${clr.getAttribute('val').toLowerCase()}` : null,
+      color: clr && /^[0-9A-Fa-f]{6}$/.test(clr.getAttribute('val') || '') ? `#${clr.getAttribute('val').toLowerCase()}` : null,
     });
   }
   const algn = kids(p, NS.a, 'pPr')[0]?.getAttribute('algn');
@@ -149,7 +150,8 @@ function fitContrast(el) {
 }
 
 export async function createPptxEditor(stage, toolbar, data, { detail = false } = {}) {
-  const JSZip = (await import('jszip')).default;
+  const [JSZip, DOMPurify] = await Promise.all([import('jszip').then((m) => m.default), import('dompurify').then((m) => m.default)]);
+  setPurifier(DOMPurify);
   const zip = await JSZip.loadAsync(data);
   const read = async (path) => { const f = zip.file(path); if (!f) throw new Error(`파일 구성요소가 없습니다: ${path}`); return f.async('string'); };
 
@@ -176,7 +178,7 @@ export async function createPptxEditor(stage, toolbar, data, { detail = false } 
       if (['dt', 'ftr', 'sldNum'].includes(phType)) continue;
       const paras = kids(body, NS.a, 'p');
       n += 1;
-      const html = paras.map(paraToHtml).join('');
+      const html = cleanHtml(paras.map(paraToHtml).join(''));
       boxes.push({ body, label: PH_LABEL[phType] || `글자 상자 ${n}`, html, current: html });
     }
     slides.push({ sldId, rid, path, doc, boxes, deleted: false });

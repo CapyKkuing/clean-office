@@ -7,7 +7,7 @@ import { h, toast, icon, menu } from './ui.js';
 import { buildRichToolbar } from './rich-toolbar.js';
 import { writeParagraph } from './pptx-editor.js';
 import {
-  NS, EMU_PX, px, kids, kid, first, resolvePath, relsPathOf, renderSlide, effectiveXfrm, xfrmElOf, phOf, spTreeOf, SHAPE_TAGS,
+  NS, EMU_PX, px, kids, kid, first, resolvePath, relsPathOf, renderSlide, effectiveXfrm, xfrmElOf, phOf, spTreeOf, SHAPE_TAGS, setPurifier,
 } from './pptx-render.js';
 
 const XML_HEAD = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
@@ -29,7 +29,8 @@ function relTarget(from, to) {
 
 // 파일 읽기: 슬라이드·레이아웃·마스터·테마·그림을 모두 불러 둠 (보기 화면과 편집기가 함께 씀)
 export async function openDeck(data) {
-  const JSZip = (await import('jszip')).default;
+  const [JSZip, DOMPurify] = await Promise.all([import('jszip').then((m) => m.default), import('dompurify').then((m) => m.default)]);
+  setPurifier(DOMPurify);
   const zip = await JSZip.loadAsync(data);
   const read = async (path) => { const f = zip.file(path); if (!f) throw new Error(`파일 구성요소가 없습니다: ${path}`); return f.async('string'); };
 

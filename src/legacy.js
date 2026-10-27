@@ -133,7 +133,11 @@ async function extractWordBinary(data) {
 
   let p = fcClx;
   const end = fcClx + lcbClx;
-  while (p < end && table[p] === 0x01) p += 3 + tv.getInt16(p + 1, true); // Prc 건너뜀
+  while (p < end && table[p] === 0x01) { // Prc 건너뜀 (길이는 항상 0 이상 → 앞으로만 감)
+    const cb = tv.getUint16(p + 1, true);
+    if (cb > 0x3fa2) throw new Error('글자 위치표가 손상되었습니다');
+    p += 3 + cb;
+  }
   if (table[p] !== 0x02) throw new Error('글자 위치표를 찾지 못했습니다');
   const lcb = tv.getUint32(p + 1, true);
   const plc = p + 5;
@@ -199,6 +203,8 @@ export async function extractPpt(data) {
   const fromList = [];
   const fromSlides = [];
   let total = 0;
+  const MAX_SLIDES = 5000; // 빈 기록을 수백만 개 넣은 파일로 메모리를 채우지 못하게
+  const MAX_LINES = 2000;
 
   function walk(start, end, ctx, depth) {
     let p = start;
@@ -214,18 +220,19 @@ export async function extractPpt(data) {
       if (ver === 0x0f) {
         let c = ctx;
         if (type === 0x0ff0 && inst === 0) c = { ...ctx, list: true };
-        if (type === 0x03ee) { fromSlides.push({ lines: [], type: null }); c = { ...ctx, slide: true }; }
+        if (type === 0x03ee) { if (fromSlides.length >= MAX_SLIDES) break; fromSlides.push({ lines: [], type: null }); c = { ...ctx, slide: true }; }
         walk(body, next, c, depth + 1);
       } else if (ctx.list && type === 0x03f3) {
+        if (fromList.length >= MAX_SLIDES) break;
         fromList.push({ lines: [], type: null });
       } else if (type === 0x0f9f) {
         const target = ctx.list ? fromList.at(-1) : ctx.slide ? fromSlides.at(-1) : null;
         if (target) target.pending = dv.getUint32(body, true);
       } else if ((type === 0x0fa0 || type === 0x0fa8) && total < MAX_CHARS) {
         const text = type === 0x0fa0 ? utf16.decode(doc.subarray(body, next)) : latin1.decode(doc.subarray(body, next));
-        total += text.length;
+        total += text.length + 1;
         const target = ctx.list ? fromList.at(-1) : ctx.slide ? fromSlides.at(-1) : null;
-        if (target) target.lines.push({ textType: target.pending ?? 1, text });
+        if (target && target.lines.length < MAX_LINES) target.lines.push({ textType: target.pending ?? 1, text });
       }
       p = next;
     }

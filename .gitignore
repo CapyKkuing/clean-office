@@ -11,6 +11,17 @@ android/capacitor-cordova-android-plugins/
 android/app/src/main/assets/public/
 *.keystore
 *.jks
+.dev.vars
+*.pem
+*.key
+*.p12
+*.pfx
+credentials.json
+service-account*.json
+auth.json
+token*.json
+*-report.txt
+*.diag.json
 
 # 로컬 도구 설정
 .claude/

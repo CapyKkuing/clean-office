@@ -1,7 +1,7 @@
 // 같은 와이파이의 PC와 파일 주고받기
 // - PC: 'PC 연결' 화면에 QR 코드 표시 (클린오피스 실행.bat 으로 켠 경우)
 // - 폰: QR을 찍어 PC의 '클린오피스' 폴더를 열고 저장
-import { h, toast, busy, extOf } from './ui.js';
+import { h, toast, busy, extOf, ask } from './ui.js';
 import { isNative } from './files.js';
 
 const STORE_KEY = 'co-pc-link';
@@ -18,15 +18,27 @@ function clearLink() {
   try { localStorage.removeItem(STORE_KEY); } catch { /* 저장 불가 */ }
 }
 
+// 집·사무실 네트워크 주소(사설 IP)만 PC로 인정. 인터넷 주소가 든 가짜 QR로 문서가 밖으로 나가는 것을 막는다.
+export function isPrivateHost(url) {
+  let host;
+  try { host = new URL(url).hostname.replace(/^\[|\]$/g, ''); } catch { return false; }
+  if (host === 'localhost' || host.endsWith('.local')) return true;
+  if (/^127\./.test(host) || /^10\./.test(host) || /^192\.168\./.test(host) || /^169\.254\./.test(host)) return true;
+  if (/^172\.(1[6-9]|2\d|3[01])\./.test(host)) return true;
+  if (/^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(host)) return true;
+  return false;
+}
+
 // QR 내용: cleanoffice://pc?k=코드&n=PC이름&u=http://192.168.0.5:5192&u=...
 export function parsePairText(text) {
   try {
     const u = new URL(text.trim());
     if (u.protocol !== 'cleanoffice:') return null;
     const key = u.searchParams.get('k');
-    const urls = u.searchParams.getAll('u').filter((x) => /^http:\/\/[\w.:-]+$/.test(x));
-    if (!key || !urls.length) return null;
-    return { key, urls, name: u.searchParams.get('n') || 'PC' };
+    if (!key || !/^[A-Za-z0-9_-]{16,64}$/.test(key)) return null;
+    const urls = u.searchParams.getAll('u').filter((x) => /^http:\/\/[\w.:-]+$/.test(x) && isPrivateHost(x)).slice(0, 6);
+    if (!urls.length) return null;
+    return { key, urls, name: String(u.searchParams.get('n') || 'PC').slice(0, 40) };
   } catch {
     return null;
   }
@@ -42,13 +54,36 @@ async function fetchWithTimeout(url, opts, ms) {
   try { return await fetch(url, { ...opts, signal: ctl.signal }); } finally { clearTimeout(t); }
 }
 
+// 연결 코드를 보내기 전에 "그 주소의 서버가 같은 코드를 아는지" 확인 (코드는 안 보내고, 코드로 만든 서명만 비교)
+// 다른 기기가 그 주소를 차지하고 있어도 코드가 새어 나가지 않는다.
+async function hmacHex(key, text) {
+  if (!globalThis.crypto?.subtle) throw new Error('이 환경에서는 PC 확인을 할 수 없습니다');
+  const k = await crypto.subtle.importKey('raw', new TextEncoder().encode(key), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const sig = await crypto.subtle.sign('HMAC', k, new TextEncoder().encode(text));
+  return [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+async function proveServer(base, key, ms) {
+  const nonce = [...crypto.getRandomValues(new Uint8Array(18))].map((b) => b.toString(16).padStart(2, '0')).join('');
+  const res = await fetchWithTimeout(`${base}/api/hello?nonce=${nonce}`, {}, ms);
+  if (!res.ok) return false;
+  let proof = null;
+  try { proof = (await res.json()).proof; } catch { return false; }
+  return typeof proof === 'string' && proof === await hmacHex(key, nonce);
+}
+
 // 저장된 주소들을 차례로 시도 (PC 주소가 바뀌었을 수 있음)
 async function call(link, path, opts = {}, ms = 15000) {
-  const urls = [link.active, ...link.urls.filter((x) => x !== link.active)].filter(Boolean);
+  const urls = [link.active, ...link.urls.filter((x) => x !== link.active)].filter(Boolean).filter(isPrivateHost);
+  link.verified ||= [];
   let lastErr;
   for (const base of urls) {
     let res;
     try {
+      if (!link.verified.includes(base)) {
+        if (!(await proveServer(base, link.key, Math.min(ms, 6000)))) { lastErr = new LinkError('이 주소의 PC가 연결 코드와 맞지 않습니다. PC 화면의 QR을 다시 찍어 주세요.'); continue; }
+        link.verified.push(base);
+        setLink(link);
+      }
       res = await fetchWithTimeout(`${base}${path}`, { ...opts, headers: { ...(opts.headers || {}), 'X-CO-Key': link.key } }, base === link.active ? ms : Math.min(ms, 5000));
     } catch (e) {
       lastErr = e;
@@ -62,6 +97,7 @@ async function call(link, path, opts = {}, ms = 15000) {
     }
     return res;
   }
+  if (lastErr instanceof LinkError) throw lastErr; // 코드 불일치처럼 이유가 분명한 경우는 그대로 알림
   throw new LinkError('PC에 연결할 수 없습니다. PC에서 클린오피스가 켜져 있고, 폰과 같은 와이파이인지 확인하세요.', 0, { cause: String(lastErr) });
 }
 
@@ -139,6 +175,7 @@ export function renderPcBrowser(stage, onOpen) {
       if (!key) return;
       const url = `http://${addr.trim().replace(/^https?:\/\//, '').replace(/\/+$/, '')}`;
       if (!/^http:\/\/[\w.-]+(:\d+)?$/.test(url)) return toast('주소 형식이 맞지 않습니다');
+      if (!isPrivateHost(url)) return toast('집·사무실 네트워크 주소(192.168… 등)만 연결할 수 있습니다', 4000);
       const link = { key: key.trim(), urls: [url.includes(':', 5) ? url : `${url}:5192`], name: 'PC' };
       if (await connectWith(link)) showBrowser();
     };
@@ -148,6 +185,7 @@ export function renderPcBrowser(stage, onOpen) {
         if (!text) return;
         const link = parsePairText(text);
         if (!link) return toast('클린오피스 PC 연결용 QR이 아닙니다', 4000);
+        if (!(await ask(`"${link.name}" PC에 연결할까요?`, `주소: ${link.urls.join(', ')}\n연결하면 이 PC와 문서를 주고받습니다.`, { ok: '연결' }))) return;
         if (await connectWith(link)) showBrowser();
       } catch (e) {
         // 뒤로가기로 닫으면 'Failed to scan code' 가 오므로 조용히 넘김

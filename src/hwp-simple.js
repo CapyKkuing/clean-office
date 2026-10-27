@@ -37,7 +37,8 @@ export async function createHwpSimpleEditor(stage, toolbar, data, name) {
       const runs = [];
       for (const r of json(doc.getCharShapeRuns(s, p, 0, len)) || []) {
         const props = json(doc.getCharPropertiesAt(s, p, Math.min(r.startOffset + 1, len))) || {};
-        runs.push({ text: text.slice(r.startOffset, r.endOffset), bold: !!props.bold, italic: !!props.italic, underline: !!props.underline, color: props.textColor || null });
+        const color = /^#[0-9a-f]{6}$/i.test(props.textColor || '') ? props.textColor : null;
+        runs.push({ text: text.slice(r.startOffset, r.endOffset), bold: !!props.bold, italic: !!props.italic, underline: !!props.underline, color });
       }
       if (!runs.length && text) runs.push({ text, bold: false, italic: false, underline: false, color: null });
       const align = ALIGN_TO_CSS[(json(doc.getParaPropertiesAt(s, p)) || {}).alignment] || '';
@@ -47,7 +48,8 @@ export async function createHwpSimpleEditor(stage, toolbar, data, name) {
       original.set(key, htmlBlock);
     }
   }
-  page.innerHTML = blocks.join('') || '<p><br></p>';
+  const DOMPurify = (await import('dompurify')).default;
+  page.innerHTML = DOMPurify.sanitize(blocks.join(''), { USE_PROFILES: { html: true }, FORBID_TAGS: ['style', 'form', 'input', 'button', 'a', 'img', 'svg', 'math'] }) || '<p><br></p>';
   stage.append(h('div', { class: 'simple-hint' }, '간단 편집 · 글자와 기본 서식만 바뀌고, 나머지 모양은 원본 그대로 유지됩니다'), page);
 
   let dirty = false;

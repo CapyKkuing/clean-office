@@ -83,7 +83,9 @@ export function neutralizeLinks(root) {
     if (!SAFE_HREF.test(href)) a.removeAttribute('href');
     else { a.setAttribute('target', '_blank'); a.setAttribute('rel', 'noopener noreferrer'); }
   });
-  root.querySelectorAll('[onload],[onerror],[onclick],script,iframe,object,embed,form').forEach((el) => el.remove());
+  root.querySelectorAll('script,iframe,object,embed,form,meta,link,base').forEach((el) => el.remove());
+  // on* 이벤트 속성은 이름을 가리지 않고 모두 제거
+  root.querySelectorAll('*').forEach((el) => { for (const at of [...el.attributes]) if (/^on/i.test(at.name)) el.removeAttribute(at.name); });
 }
 
 // 문서를 HTML로 바꾼 결과를 화면에 넣기 전 정화 (스크립트·이벤트·위험 링크 제거, 그림 data: 주소는 허용)

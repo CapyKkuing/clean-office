@@ -15,6 +15,9 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const DIST = path.resolve(process.env.CO_DIST || path.join(HERE, '..', 'dist'));
 const PORT = Number(process.env.CO_PORT || 5192);
 const MAX_UPLOAD = 60 * 1024 * 1024;
+const MAX_CONCURRENT_UPLOADS = 3;
+// 올릴 수 있는 파일 형식: 앱이 여는 문서·그림만. 바로가기(.lnk·.url·.scf)나 실행 파일을 공유 폴더에 심지 못하게
+const ALLOWED_EXT = new Set(['.pdf', '.docx', '.doc', '.xlsx', '.xlsm', '.xls', '.csv', '.ods', '.pptx', '.ppt', '.hwp', '.hwpx', '.txt', '.md', '.rtf', '.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp']);
 const CONFIG_DIR = process.env.CO_CONFIG_DIR || path.join(process.env.APPDATA || path.join(os.homedir(), '.config'), 'CleanOffice');
 const CONFIG_FILE = path.join(CONFIG_DIR, 'server.json');
 
@@ -50,6 +53,17 @@ function lanAddresses() {
 }
 
 const isLoopback = (req) => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress);
+
+// 같은 집·사무실 네트워크(사설 주소)에서 온 요청만 받음. 공인 IP가 PC에 직접 붙는 회선에서 인터넷 쪽 접근을 막는다.
+function isPrivateAddress(addr = '') {
+  const a = addr.replace(/^::ffff:/i, '');
+  if (a === '::1' || /^127\./.test(a)) return true;
+  if (/^10\./.test(a) || /^192\.168\./.test(a) || /^169\.254\./.test(a)) return true;
+  if (/^172\.(1[6-9]|2\d|3[01])\./.test(a)) return true;
+  if (/^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(a)) return true; // 통신사 공유 주소
+  if (/^f[cd][0-9a-f]{2}:/i.test(a) || /^fe80:/i.test(a)) return true;
+  return false;
+}
 
 // 접속 주소(Host) 검사: 이 PC의 주소로 들어온 요청만 받음.
 // 가짜 도메인을 이 PC로 돌리는 수법(DNS 리바인딩)으로 브라우저가 서버를 '같은 사이트'로 착각하는 것을 막는다.
@@ -144,11 +158,20 @@ function authorized(req) {
 
 function readBody(req) {
   return new Promise((resolve, reject) => {
+    const tooBig = () => Object.assign(new Error('파일이 너무 큽니다 (60MB 초과)'), { status: 413 });
+    const declared = Number(req.headers['content-length']);
+    if (Number.isFinite(declared) && declared > MAX_UPLOAD) return reject(tooBig());
     const chunks = [];
     let total = 0;
     req.on('data', (c) => {
       total += c.length;
-      if (total > MAX_UPLOAD) { reject(Object.assign(new Error('파일이 너무 큽니다 (60MB 초과)'), { status: 413 })); req.destroy(); return; }
+      if (total > MAX_UPLOAD) {
+        // 413 응답이 먼저 나가도록 잠깐 멈췄다가 끊음
+        req.pause();
+        reject(tooBig());
+        setTimeout(() => req.destroy(), 1000);
+        return;
+      }
       chunks.push(c);
     });
     req.on('end', () => resolve(Buffer.concat(chunks)));
@@ -157,6 +180,7 @@ function readBody(req) {
 }
 
 // ---------- API ----------
+let uploading = 0;
 async function api(req, res, url) {
   const p = url.pathname;
 
@@ -169,6 +193,13 @@ async function api(req, res, url) {
       saveConfig();
     }
     return send(res, 200, { key: config.key, addresses: lanAddresses(), folder: ROOT(), name: os.hostname(), port: PORT });
+  }
+
+  // 폰이 "이 주소가 정말 내 PC인가" 확인하는 용도: 연결 코드로 만든 서명을 돌려줌 (코드 자체는 안 보냄)
+  if (p === '/api/hello') {
+    const nonce = url.searchParams.get('nonce') || '';
+    if (!/^[A-Za-z0-9_-]{16,64}$/.test(nonce)) return send(res, 400, { error: '잘못된 요청' });
+    return send(res, 200, { proof: crypto.createHmac('sha256', config.key).update(nonce).digest('hex'), name: os.hostname() });
   }
 
   const auth = authorized(req);
@@ -206,6 +237,11 @@ async function api(req, res, url) {
     }
 
     if (req.method === 'PUT') {
+      const base0 = path.basename(file);
+      if (!ALLOWED_EXT.has(path.extname(base0).toLowerCase()) || /[. ]$/.test(base0)) return send(res, 415, { error: '이 형식의 파일은 올릴 수 없습니다' });
+      if (uploading >= MAX_CONCURRENT_UPLOADS) return send(res, 429, { error: '동시에 올리는 파일이 많습니다. 잠시 뒤 다시 시도하세요.' });
+      uploading += 1;
+      try {
       const body = await readBody(req);
       const st = await fsp.stat(file).catch(() => null);
       if (st?.isDirectory()) return send(res, 400, { error: '같은 이름의 폴더가 있습니다' });
@@ -217,10 +253,18 @@ async function api(req, res, url) {
       if (st && base === undefined) return send(res, 409, { error: '같은 이름의 파일이 이미 있습니다', exists: true });
       await fsp.mkdir(path.dirname(file), { recursive: true });
       const tmp = `${file}.co-${crypto.randomBytes(4).toString('hex')}.tmp`;
-      await fsp.writeFile(tmp, body);
-      await fsp.rename(tmp, file);
+      try {
+        await fsp.writeFile(tmp, body);
+        await fsp.rename(tmp, file);
+      } catch (e) {
+        await fsp.unlink(tmp).catch(() => {}); // 실패한 임시 파일은 남기지 않음
+        throw e;
+      }
       const now = await fsp.stat(file);
       return send(res, 200, { mtime: now.mtimeMs, size: now.size });
+      } finally {
+        uploading -= 1;
+      }
     }
   }
 
@@ -264,12 +308,13 @@ async function handle(req, res) {
   try {
     try { url = new URL(req.url, 'http://x'); } catch { return send(res, 400, { error: '잘못된 요청' }); }
     if (!hostAllowed(req)) { res.writeHead(421, { 'Content-Type': 'application/json; charset=utf-8' }); return res.end(JSON.stringify({ error: '잘못된 접속 주소' })); }
+    if (!isPrivateAddress(req.socket.remoteAddress)) { res.writeHead(403, { 'Content-Type': 'application/json; charset=utf-8' }); return res.end(JSON.stringify({ error: '같은 네트워크에서만 접속할 수 있습니다' })); }
     if (req.method === 'OPTIONS') { res.writeHead(204, cors()); return res.end(); }
     if (url.pathname.startsWith('/api/')) return await api(req, res, url);
     if (req.method !== 'GET') return send(res, 405, { error: '지원하지 않는 요청' });
     return await staticFile(req, res, url);
   } catch (e) {
-    console.error(e);
+    if (!e.status) console.error(e); // 예상된 거절(413 등)은 조용히
     if (!res.headersSent) send(res, e.status || 500, { error: e.status ? e.message : '서버 오류' });
     else res.end();
   }

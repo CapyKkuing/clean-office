@@ -2,7 +2,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <application
-        android:requestLegacyExternalStorage="true"
         android:networkSecurityConfig="@xml/network_security_config"
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
@@ -81,6 +80,4 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
 </manifest>

@@ -380,6 +380,9 @@ function openSheet(name, data, src = {}) {
 }
 
 // ---------- 홈 ----------
+// 최근 목록에서 뺀 파일은 안드로이드 영구 접근 권한도 돌려줌 (목록에 없는 파일에 앱이 계속 접근할 수 있지 않게)
+const forgetSrc = async (src) => { if (isNative && src?.saf?.uri) { try { await DocFiles.forget({ uri: src.saf.uri }); } catch { /* 이미 해제됨 */ } } };
+
 async function renderRecent() {
   const items = await listRecent();
   const list = $('recentList');
@@ -392,7 +395,7 @@ async function renderRecent() {
       h('div', { class: 'meta' },
         h('div', { class: 'name' }, it.name),
         h('div', { class: 'sub' }, `${where}${new Date(it.openedAt).toLocaleString('ko-KR', { dateStyle: 'medium', timeStyle: 'short' })} · ${formatSize(it.size)}`)),
-      h('button', { class: 'del', title: '목록에서 빼기', onclick: async (e) => { e.stopPropagation(); await removeRecent(it.id); renderRecent(); } }, '×'));
+      h('button', { class: 'del', title: '목록에서 빼기', onclick: async (e) => { e.stopPropagation(); await forgetSrc(it.src); await removeRecent(it.id); renderRecent(); } }, '×'));
   }));
   $('recentEmpty').hidden = items.length > 0;
   $('clearRecent').hidden = items.length === 0;
@@ -502,7 +505,7 @@ async function createBlankHwp() {
 }
 
 $('appVersion').textContent = `클린오피스 v${__APP_VERSION__}`;
-$('clearRecent').addEventListener('click', async () => { if (confirm('최근 문서 목록을 비울까요? (원본 파일은 지워지지 않습니다)')) { await clearRecent(); renderRecent(); } });
+$('clearRecent').addEventListener('click', async () => { if (confirm('최근 문서 목록을 비울까요? (원본 파일은 지워지지 않습니다)')) { for (const x of await listRecent()) await forgetSrc(x.src); await clearRecent(); renderRecent(); } });
 
 // 카드 문구를 기기에 맞게
 if (isNative) {

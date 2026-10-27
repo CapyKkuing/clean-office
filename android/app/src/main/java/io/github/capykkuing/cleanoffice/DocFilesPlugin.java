@@ -28,19 +28,49 @@ public class DocFilesPlugin extends Plugin {
 
     private static final long MAX_BYTES = 60L * 1024 * 1024;
     private boolean launchHandled = false;
+    // 이번 실행에서 사용자가 직접 고르거나 다른 앱이 넘겨준 파일 주소만 기억. read/write 는 이 목록이나 영구 권한이 있는 주소만 받는다.
+    private final java.util.Set<String> sessionUris = java.util.Collections.synchronizedSet(new java.util.HashSet<>());
+
+    private boolean allowed(Uri uri) {
+        if (uri == null || !"content".equals(uri.getScheme())) return false;
+        if (sessionUris.contains(uri.toString())) return true;
+        for (android.content.UriPermission p : getContext().getContentResolver().getPersistedUriPermissions()) {
+            if (p.getUri().equals(uri)) return true;
+        }
+        return false;
+    }
 
     @Override
     protected void handleOnNewIntent(Intent intent) {
         super.handleOnNewIntent(intent);
         if (!isViewIntent(intent)) return;
-        try {
-            // 앱이 막 켜지는 중이면 화면 쪽이 아직 듣고 있지 않을 수 있어 보관해 둠
-            notifyListeners("fileOpened", describe(intentUri(intent), false, true), true);
-        } catch (Exception e) {
-            JSObject err = new JSObject();
-            err.put("error", e.getMessage());
-            notifyListeners("fileOpened", err, true);
+        final Uri uri = intentUri(intent);
+        sessionUris.add(uri.toString());
+        // 파일 읽기는 화면 스레드 밖에서 (느린 클라우드 앱이 화면을 멈추지 않게)
+        new Thread(() -> {
+            try {
+                // 앱이 막 켜지는 중이면 화면 쪽이 아직 듣고 있지 않을 수 있어 보관해 둠
+                notifyListeners("fileOpened", describe(uri, false, true), true);
+            } catch (Exception e) {
+                JSObject err = new JSObject();
+                err.put("error", e.getMessage());
+                notifyListeners("fileOpened", err, true);
+            }
+        }).start();
+    }
+
+    // 최근 목록에서 뺀 파일: 영구 접근 권한도 돌려줌
+    @PluginMethod
+    public void forget(PluginCall call) {
+        String uri = call.getString("uri");
+        if (uri != null) {
+            ContentResolver cr = getContext().getContentResolver();
+            Uri u = Uri.parse(uri);
+            try { cr.releasePersistableUriPermission(u, Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION); } catch (Exception ignored) { /* 쓰기 권한이 없던 경우 */ }
+            try { cr.releasePersistableUriPermission(u, Intent.FLAG_GRANT_READ_URI_PERMISSION); } catch (Exception ignored) { /* 이미 해제됨 */ }
+            sessionUris.remove(uri);
         }
+        call.resolve();
     }
 
     // 다른 앱에서 "클린오피스로 열기"로 실행됐을 때 그 파일
@@ -54,7 +84,9 @@ public class DocFilesPlugin extends Plugin {
         }
         launchHandled = true;
         try {
-            call.resolve(describe(intentUri(intent), false, true));
+            Uri uri = intentUri(intent);
+            sessionUris.add(uri.toString());
+            call.resolve(describe(uri, false, true));
         } catch (Exception e) {
             call.reject(e.getMessage());
         }
@@ -77,6 +109,7 @@ public class DocFilesPlugin extends Plugin {
             return;
         }
         Uri uri = data.getData();
+        sessionUris.add(uri.toString());
         boolean writable = keepPermission(uri);
         try {
             call.resolve(describe(uri, writable, true));
@@ -93,6 +126,10 @@ public class DocFilesPlugin extends Plugin {
             call.reject("uri 없음");
             return;
         }
+        if (!allowed(Uri.parse(uri))) {
+            call.reject("이 파일에 접근할 권한이 없습니다", "NOT_ALLOWED");
+            return;
+        }
         try {
             call.resolve(describe(Uri.parse(uri), canWrite(Uri.parse(uri)), true));
         } catch (Exception e) {
@@ -107,6 +144,10 @@ public class DocFilesPlugin extends Plugin {
         String b64 = call.getString("data");
         if (uri == null || b64 == null) {
             call.reject("uri/data 없음");
+            return;
+        }
+        if (!allowed(Uri.parse(uri))) {
+            call.reject("이 파일에 접근할 권한이 없습니다", "NOT_ALLOWED");
             return;
         }
         try {
@@ -136,6 +177,7 @@ public class DocFilesPlugin extends Plugin {
             return;
         }
         Uri uri = data.getData();
+        sessionUris.add(uri.toString());
         try {
             writeBytes(uri, Base64.decode(call.getString("data", ""), Base64.NO_WRAP));
             boolean writable = keepPermission(uri);
@@ -148,9 +190,15 @@ public class DocFilesPlugin extends Plugin {
     // ---------- 내부 ----------
     private static boolean isViewIntent(Intent intent) {
         if (intent == null) return false;
-        String a = intent.getAction();
-        return (Intent.ACTION_VIEW.equals(a) && intent.getData() != null)
-            || (Intent.ACTION_SEND.equals(a) && intent.getParcelableExtra(Intent.EXTRA_STREAM) != null);
+        try {
+            String a = intent.getAction();
+            if (!Intent.ACTION_VIEW.equals(a) && !Intent.ACTION_SEND.equals(a)) return false;
+            Uri u = intentUri(intent);
+            // 다른 앱이 넘긴 content:// 주소만 받음 (file:// 등으로 앱 내부 파일을 가리키는 인텐트는 무시)
+            return u != null && "content".equals(u.getScheme());
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     private static Uri intentUri(Intent intent) {
