@@ -9,6 +9,19 @@
 
 > An ad-free document viewer/editor for Android and desktop browsers (PDF, DOCX, XLSX, PPTX, HWP/HWPX), with Wi-Fi file sharing between PC and phone via QR code.
 
+<p align="center"><img src="docs/overview.gif" width="560" alt="클린오피스 소개: 광고 없는 무료 오피스 앱, PDF·워드·엑셀·파워포인트·한글 보기와 편집, PC와 휴대폰 QR 연결, 다른 앱과의 차이"></p>
+
+## 무엇이 다른가요?
+
+| | 흔한 무료 오피스 앱 | 클린오피스 |
+|---|---|---|
+| 광고 | 전면·배너 광고 | **없음** |
+| 로그인 | 가입·로그인 유도 | **필요 없음** |
+| 내 문서 | 서버로 업로드하는 경우가 많음 | **기기 안에서만 처리** |
+| 한글 HWP | 보기만 되거나 별도 앱 필요 | **무료로 편집** (HWP·HWPX 저장) |
+| PC ↔ 휴대폰 | 클라우드 계정 필요 | **같은 와이파이에서 QR 한 번** |
+| 소스 코드 | 비공개 | **오픈소스(MIT)**, 공개 전 보안 점검 |
+
 ## 시연 — 파워포인트 상세 편집 (v0.3.0)
 
 <p align="center"><img src="docs/demo-pptx.gif" width="720" alt="파워포인트 상세 편집 시연: 도형 옮기기, 크기 조절, 글자 입력, 도형 넣기, 새 슬라이드"></p>
