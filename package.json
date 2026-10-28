@@ -1,6 +1,6 @@
 {
   "name": "clean-office",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "광고 없는 문서 뷰어·편집기 (PDF·워드·엑셀·파워포인트·한글)",
   "scripts": {
     "dev": "vite",

@@ -42,7 +42,26 @@
                 <data android:mimeType="application/vnd.hancom.hwpx" />
                 <data android:mimeType="application/haansofthwpx" />
                 <data android:mimeType="application/msword" />
+                <data android:mimeType="application/hwp" />
+                <data android:mimeType="application/x-hwpx" />
+                <data android:mimeType="application/vnd.ms-word" />
+                <data android:mimeType="application/vnd.ms-excel.sheet.macroEnabled.12" />
+                <data android:mimeType="application/vnd.oasis.opendocument.spreadsheet" />
                 <data android:mimeType="application/vnd.ms-powerpoint" />
+            </intent-filter>
+            <!-- 정부·공공기관 사이트처럼 형식을 "일반 파일"로 보내는 경우 (파일 내용을 보고 종류를 판단) -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
+                <data android:mimeType="application/octet-stream" />
+                <data android:mimeType="binary/octet-stream" />
+                <data android:mimeType="application/x-download" />
+                <data android:mimeType="application/download" />
+                <data android:mimeType="application/force-download" />
+                <data android:mimeType="application/unknown" />
+                <data android:mimeType="application/zip" />
+                <data android:mimeType="application/x-zip-compressed" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
@@ -61,6 +80,11 @@
                 <data android:mimeType="application/vnd.hancom.hwpx" />
                 <data android:mimeType="application/haansofthwpx" />
                 <data android:mimeType="application/msword" />
+                <data android:mimeType="application/hwp" />
+                <data android:mimeType="application/x-hwpx" />
+                <data android:mimeType="application/vnd.ms-word" />
+                <data android:mimeType="application/vnd.ms-excel.sheet.macroEnabled.12" />
+                <data android:mimeType="application/vnd.oasis.opendocument.spreadsheet" />
                 <data android:mimeType="application/vnd.ms-powerpoint" />
             </intent-filter>
 

@@ -7,6 +7,7 @@ import { createDocEditor } from './doc-editor.js';
 import { createSheetEditor } from './sheet-editor.js';
 import { htmlToDocx, elementToPdf, htmlToText } from './export.js';
 import { isNative, DocFiles, MIME, b64ToBuffer, pickFile, canSaveInPlace, saveInPlace, saveAs, reread } from './files.js';
+import { KNOWN_EXT, sniffExt } from './sniff.js';
 import { getLink, getPcFile, savePc, renderPcBrowser, renderPcPanel } from './pc-link.js';
 
 const $ = (id) => document.getElementById(id);
@@ -158,6 +159,14 @@ function rememberable(src) {
 
 // ---------- 열기 ----------
 async function openFile(name, data, { remember = true, src = {} } = {}) {
+  // 'fileDown.do'처럼 확장자로 알 수 없으면 내용을 보고 이름에 맞는 확장자를 붙임
+  if (!KNOWN_EXT.includes(extOf(name))) {
+    const guessed = await sniffExt(data);
+    if (guessed) {
+      name = `${extOf(name) ? baseName(name) : name}.${guessed}`;
+      if (src.name) src.name = name;
+    }
+  }
   const ext = extOf(name);
   showWorkspace(name);
   current = { name, data, src };
