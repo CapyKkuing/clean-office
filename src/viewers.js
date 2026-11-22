@@ -98,7 +98,7 @@ export async function sanitizeHtml(html) {
 
 // ---------- PDF ----------
 let pdfjsPromise;
-function loadPdfjs() {
+export function loadPdfjs() {
   pdfjsPromise ??= Promise.all([
     import('pdfjs-dist'),
     import('pdfjs-dist/build/pdf.worker.min.mjs?url'),

@@ -187,6 +187,61 @@ public class DocFilesPlugin extends Plugin {
         }
     }
 
+    // 이미지로 저장: 사진 앱에서 보이는 Pictures/CleanOffice 폴더에 PNG 저장 (안드로이드 10 이상, 권한 필요 없음)
+    // 이 앱이 새로 만드는 파일만 쓰고, 다른 사진은 읽거나 고치지 않는다.
+    @PluginMethod
+    public void saveImage(PluginCall call) {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.Q) {
+            call.reject("이 안드로이드 버전은 사진 폴더에 바로 저장할 수 없습니다", "UNSUPPORTED");
+            return;
+        }
+        String name = call.getString("name", "image.png");
+        String b64 = call.getString("data");
+        if (b64 == null) {
+            call.reject("data 없음");
+            return;
+        }
+        // 파일 이름에 폴더 구분자 등이 들어오지 않게
+        name = name.replaceAll("[\\\\/:*?\"<>|\\p{Cntrl}]", "_");
+        if (!name.toLowerCase().endsWith(".png")) name = name + ".png";
+        final String fileName = name;
+        new Thread(() -> {
+            ContentResolver cr = getContext().getContentResolver();
+            Uri item = null;
+            try {
+                byte[] bytes = Base64.decode(b64, Base64.NO_WRAP);
+                android.content.ContentValues v = new android.content.ContentValues();
+                v.put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, fileName);
+                v.put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/png");
+                v.put(android.provider.MediaStore.Images.Media.RELATIVE_PATH, android.os.Environment.DIRECTORY_PICTURES + "/CleanOffice");
+                v.put(android.provider.MediaStore.Images.Media.IS_PENDING, 1);
+                item = cr.insert(android.provider.MediaStore.Images.Media.getContentUri(android.provider.MediaStore.VOLUME_EXTERNAL_PRIMARY), v);
+                if (item == null) throw new Exception("사진 폴더에 파일을 만들 수 없습니다");
+                try (OutputStream out = cr.openOutputStream(item, "w")) {
+                    if (out == null) throw new Exception("사진 폴더에 쓸 수 없습니다");
+                    out.write(bytes);
+                }
+                android.content.ContentValues done = new android.content.ContentValues();
+                done.put(android.provider.MediaStore.Images.Media.IS_PENDING, 0);
+                cr.update(item, done, null, null);
+                String saved = fileName;
+                try (Cursor c = cr.query(item, new String[] { android.provider.MediaStore.Images.Media.DISPLAY_NAME }, null, null, null)) {
+                    if (c != null && c.moveToFirst() && !c.isNull(0)) saved = c.getString(0);
+                }
+                JSObject o = new JSObject();
+                o.put("uri", item.toString());
+                o.put("name", saved);
+                o.put("folder", "Pictures/CleanOffice");
+                call.resolve(o);
+            } catch (Exception e) {
+                if (item != null) {
+                    try { cr.delete(item, null, null); } catch (Exception ignored) { /* 반쯤 만든 파일 정리 */ }
+                }
+                call.reject("사진 폴더에 저장하지 못했습니다: " + e.getMessage(), "SAVE_FAILED");
+            }
+        }).start();
+    }
+
     // ---------- 내부 ----------
     private static boolean isViewIntent(Intent intent) {
         if (intent == null) return false;

@@ -1,5 +1,5 @@
 import { App } from '@capacitor/app';
-import { h, btn, menu, toast, busy, baseName, extOf, esc, ask, isModalOpen, closeModal } from './ui.js';
+import { h, btn, menu, closeMenus, toast, busy, baseName, extOf, esc, isModalOpen, closeModal } from './ui.js';
 import { listRecent, getRecent, saveRecent, removeRecent, clearRecent } from './store.js';
 import { shareBlob } from './save.js';
 import { viewPdf, viewDocx, viewPptx, viewHwp, viewText, viewImage, viewNotice, sanitizeHtml, neutralizeLinks } from './viewers.js';
@@ -9,6 +9,8 @@ import { htmlToDocx, elementToPdf, htmlToText } from './export.js';
 import { isNative, DocFiles, MIME, b64ToBuffer, pickFile, canSaveInPlace, saveInPlace, saveAs, reread } from './files.js';
 import { KNOWN_EXT, sniffExt } from './sniff.js';
 import { getLink, getPcFile, savePc, renderPcBrowser, renderPcPanel } from './pc-link.js';
+import { imageSourceFor, saveAsImages } from './image-export.js';
+import { createBackExit } from './image-plan.js';
 
 const $ = (id) => document.getElementById(id);
 const home = $('home');
@@ -70,11 +72,15 @@ window.addEventListener('popstate', () => {
 });
 
 if (isNative) {
-  // 뒤로가기: 확인창이 떠 있으면 닫기 → 문서 화면이면 홈으로 → 홈이면 '종료할까요?' 물어보고 종료
-  App.addListener('backButton', async () => {
+  // 뒤로가기: 확인창이 떠 있으면 닫기 → 메뉴가 열려 있으면 닫기 → 문서 화면이면 홈으로
+  // → 홈이면 '한 번 더 누르면 종료돼요' 안내, 2초 안에 다시 누르면 종료
+  const backExit = createBackExit({ windowMs: 2000 });
+  App.addListener('backButton', () => {
     if (isModalOpen()) return closeModal();
-    if (current) return leave();
-    if (await ask('클린오피스를 종료할까요?', null, { ok: '종료', cancel: '계속 쓰기' })) App.exitApp();
+    if (document.querySelector('.menu')) return closeMenus();
+    if (current) { backExit.reset(); return leave(); }
+    if (backExit.press() === 'exit') return App.exitApp();
+    toast('한 번 더 누르면 종료돼요', 2000);
   });
 }
 
@@ -211,7 +217,19 @@ async function openFile(name, data, { remember = true, src = {} } = {}) {
 function viewerActions(name, data, { edit, src } = {}) {
   const blob = () => new Blob([data], { type: MIME[extOf(name)] || 'application/octet-stream' });
   if (edit) actions.append(btn('편집', edit, { primary: true, icon: '✎' }));
-  actions.append(btn('더보기', (e) => menu(e.currentTarget, commonItems(name, blob, src || {})), { icon: '⋯', title: '저장·공유·PC로 보내기' }));
+  // 이미지로 저장 (PDF·한글·파워포인트·워드). 그 밖의 형식은 메뉴에 넣지 않음
+  const ext = extOf(name);
+  const mine = current;
+  const imageItem = ['pdf', 'hwp', 'hwpx', 'pptx', 'docx'].includes(ext) ? ['이미지로 저장 (PNG)', () => {
+    const source = imageSourceFor(ext, data, stage);
+    if (source.reason) return toast(source.reason, 4000);
+    saveAsImages({ name, source, isAlive: () => current === mine });
+  }] : null;
+  actions.append(btn('더보기', (e) => {
+    const items = commonItems(name, blob, src || {});
+    if (imageItem) items.splice(1, 0, imageItem);
+    menu(e.currentTarget, items);
+  }, { icon: '⋯', title: '저장·공유·이미지로 저장·PC로 보내기' }));
 }
 
 // ---------- 문서 편집 ----------

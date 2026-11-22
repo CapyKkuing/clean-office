@@ -97,7 +97,8 @@ export function ask(title, message, { ok = '확인', cancel = '취소', danger =
   });
 }
 export const isModalOpen = () => Boolean(document.querySelector('.modal-wrap'));
-export function closeModal() { document.querySelector('.modal-wrap .modal-btns .btn:not(.primary)')?.click(); }
+// 맨 위(가장 나중에 연) 창만 닫음 (창 위에 '크게 보기'가 겹쳐 있을 때)
+export function closeModal() { [...document.querySelectorAll('.modal-wrap')].pop()?.querySelector('.modal-btns .btn:not(.primary)')?.click(); }
 
 export function closeMenus() {
   document.querySelectorAll('.menu').forEach((m) => m.remove());
